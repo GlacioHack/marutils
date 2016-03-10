@@ -27,6 +27,8 @@ grids = {}
 grids['5km'] = {'spatial_ref' : '+proj=stere +lat_0=90 +lat_ts=71 +lon_0=-39 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs',
                 'geo_transform' : (-800000, 5000, 0, -600000, 0, -5000)}
 
+grids['25km'] = {'spatial_ref' : '+proj=stere +lat_0=70.5 +lon_0=-40 +k=1 +datum=WGS84 +units=m +nodefs',
+                 'geo_transform' : (-787500,25000,0,1537500,0,-25000)}
 
 ###
 
