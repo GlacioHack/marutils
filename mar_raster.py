@@ -138,3 +138,13 @@ def proj(grid):
 
     srs = spatial_ref(grid)
     return pyproj.Proj(srs.ExportToProj4())
+
+
+
+def extent(ds):
+    """ Return extent of xarray dataset [xmin,xmax,ymin,ymax] """
+    xmin = float(ds.X.min())
+    xmax = float(ds.X.max())
+    ymin = float(ds.Y.min())
+    ymax = float(ds.Y.max())
+    return (xmin,xmax,ymin,ymax)
