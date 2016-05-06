@@ -16,6 +16,7 @@ import numpy as np
 import mpl_toolkits.basemap.pyproj as pyproj
 import xarray as xr
 import cartopy.crs
+from glob import glob
 
 import georaster
 
@@ -81,14 +82,16 @@ def load(filename, grid):
 
 
 
-def load_xr(filename,X_name='X',Y_name='Y'):
+def open_xr(filename, X_name='X', Y_name='Y', **kwargs):
     """
     Load MAR NetCDF, setting X and Y coordinate names to X_name and Y_name,
     and multiplying by 1000 to convert coordinates to metres.
 
+    Use **kawrgs to specify 'chunk' parameter if desired.
+
     """
 
-    ds = xr.open_dataset(filename)
+    ds = xr.open_dataset(filename, **kwargs)
 
     # 25 km grid
     if 'X10_69' in ds.coords:
@@ -109,6 +112,40 @@ def load_xr(filename,X_name='X',Y_name='Y'):
     ds['Y'] = ds['Y'] * 1000
 
     return ds
+
+
+
+def open_mfxr(files, dim='TIME', transform_func=None):
+    """
+
+    Load multiple MAR files into a single xarray object, performing some
+    aggregation first to make this computationally feasible.
+
+    E.g. select a single datarray to examine. 
+
+    # you might also use indexing operations like .sel to subset datasets
+    comb = read_netcdfs('MAR*.nc', dim='TIME',
+                 transform_func=lambda ds: ds.AL)
+
+    Based on http://xray.readthedocs.io/en/v0.7.1/io.html#combining-multiple-files
+    See also http://xray.readthedocs.io/en/v0.7.1/dask.html
+
+    """
+
+    def process_one_path(path):        
+        ds = open_xr(path,chunks={'TIME':366})
+        # transform_func should do some sort of selection or
+        # aggregation
+        if transform_func is not None:
+            ds = transform_func(ds)
+        # load all data from the transformed dataset, to ensure we can
+        # use it after closing each original file
+        return ds
+
+    paths = sorted(glob(files))
+    datasets = [process_one_path(p) for p in paths]
+    combined = xr.concat(datasets, dim)
+    return combined
 
 
 
