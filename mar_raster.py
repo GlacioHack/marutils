@@ -13,7 +13,10 @@ any of the several ways that GDAL understands.
 from osgeo import osr
 import os
 import numpy as np
-import mpl_toolkits.basemap.pyproj as pyproj
+try:
+    import pyproj
+except ImportError:
+    import mpl_toolkits.basemap.pyproj as pyproj
 import xarray as xr
 import cartopy.crs
 from glob import glob
