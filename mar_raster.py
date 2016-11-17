@@ -98,18 +98,23 @@ def open_xr(filename, X_name='X', Y_name='Y', **kwargs):
 
     # 25 km grid
     if 'X10_69' in ds.coords:
-        ds.rename({'X10_69':X_name},inplace=True)
-        ds.rename({'Y18_127':Y_name},inplace=True)
+        ds.rename({'X10_69':X_name}, inplace=True)
+        ds.rename({'Y18_127':Y_name}, inplace=True)
 
     # 10 km grid
     elif 'X10_153' in ds.coords:
-        ds.rename({'X10_153':X_name},inplace=True)
-        ds.rename({'Y21_288':Y_name},inplace=True)
+        ds.rename({'X10_153':X_name}, inplace=True)
+        ds.rename({'Y21_288':Y_name}, inplace=True)
         
     # 20 km grid
     elif 'X12_84' in ds.coords:
-        ds.rename({'X12_84':X_name},inplace=True)
-        ds.rename({'Y21_155':Y_name},inplace=True)
+        ds.rename({'X12_84':X_name}, inplace=True)
+        ds.rename({'Y21_155':Y_name}, inplace=True)
+
+    # 7.5 km grid
+    elif 'X12_203' in ds.coords:
+        ds.rename({'X12_203':X_name}, inplace=True)
+        ds.rename({'Y20_377':Y_name}, inplace=True)
 
     ds['X'] = ds['X'] * 1000
     ds['Y'] = ds['Y'] * 1000
