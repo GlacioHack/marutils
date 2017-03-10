@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Load MAR NetCDF grids into a georaster instance.
+Load MAR NetCDF grids into a georaster instance or into xarray.
 
 Needed because the NetCDF grids which MAR outputs are not geo-referenced in 
 any of the several ways that GDAL understands.
@@ -10,7 +10,7 @@ any of the several ways that GDAL understands.
 
 """
 
-from osgeo import osr
+from osgeo import osr, gdal
 import os
 import numpy as np
 try:
@@ -193,3 +193,81 @@ def extent(ds):
     ymin = float(ds.Y.min())
     ymax = float(ds.Y.max())
     return (xmin,xmax,ymin,ymax)
+
+
+
+def create_mar_res(xarray_obj, grid_info, gdal_dtype, ret_xarray=False, interp_type=gdal.GRA_NearestNeighbour):
+    """ Resample other res raster to dimensions and resolution of MAR grid
+
+    :param xarray_obj: A 2-D DataArray to resample with dimensions Y and X
+    :type xarray_obj: xarray.DataArray
+    :param grid_info: dict containing key-value pairs for nx, ny, xmin, ymax, xres, yres
+    :type grid_info: dict
+    :param gdal_dtype: a GDAL data type
+    :type gdal_dtype: int
+    :param ret_xarray: if True, return xarray DataArray, if False return GeoRaster
+    :type ret_xarray: bool
+    :param interp_type: a GDAL interpolation type
+    :type interp_type: int
+    
+    :returns: mask at MAR resolution
+    :rtype: GeoRaster.SingleBandRaster, xarray.DataArray
+
+    """
+
+    # Convert to numpy array and squeeze the extra dimension away
+    as_array = xarray_obj.values.squeeze()
+    if gdal_dtype == gdal.GDT_Byte:
+        as_array = np.where(((np.isnan(as_array)) | (as_array == 0)),0,1)
+
+    source_trans = (xarray_obj.X.values[0], xarray_obj.X.diff(dim='X').values[0], 0,
+                    xarray_obj.Y.values[-1], 0, xarray_obj.Y.diff(dim='Y').values[0] * -1 )
+    source_mask = georaster.SingleBandRaster.from_array(as_array, source_trans, 
+        grids['25km']['spatial_ref'],gdal_dtype=gdal_dtype)
+    # Reproject
+    mask_7km = source_mask.reproject(source_mask.srs, 
+                    grid_info['nx'], grid_info['ny'],
+                    grid_info['xmin'], grid_info['ymax'],
+                    grid_info['xres'], grid_info['yres'],
+                    dtype=gdal_dtype,
+                    interp_type=interp_type)
+
+    if ret_xarray:
+        cx, cy = mask_7km.coordinates(latlon=True)
+        coords = {'Y': cy[:,0], 'X': cx[0,:]}
+        da = xr.DataArray(mask_7km.r, dims=['Y', 'X'], coords=coords)
+        return da
+    else:
+        return mask_7km
+
+
+
+def create_annual_mar_res(multi_annual_xarray, MAR_MSK, mar_kws, gdal_dtype, **kwargs):
+    """ Create a DataArray of masks, with TIME dimension 
+    
+    :param multi_annual_xarray: xarray with TIME, Y, X dimensions - TIME is annual
+    :type multi_annual_xarray: xarray.DataArray
+    :param MAR_MSK: 
+    :type MAR_MSK:
+    :param gdal_dtype: a GDAL data type
+    :type gdal_dtype: int
+
+     """
+
+    years = multi_annual_xarray['TIME.year'].values
+    # Set up store for masks at MAR resolution
+    store = np.zeros((len(years), MAR_MSK.shape[0], MAR_MSK.shape[1]))
+    n = 0
+    for year in years:
+
+        # Convert to MAR resolution
+        mar_mask = create_mar_res(multi_annual_xarray.sel(TIME=str(year)), mar_kws, gdal_dtype, **kwargs)
+
+        # Save - discard georaster information as we're putting into multi-year
+        # DataArray instead.
+        store[n, :, :] = mar_mask.r
+        n += 1
+
+    # Convert to multi-annual DataArray
+    masks = xr.DataArray(store, coords=[multi_annual_xarray.TIME, MAR_MSK.Y, MAR_MSK.X], dims=['TIME', 'Y', 'X'])
+    return masks
