@@ -31,8 +31,9 @@ grids = {}
 # 5 km grid:
 # ftp://ftp.climato.be/fettweis/MARv3.5/Greenland/readme.txt
 # http://nsidc.org/data/docs/daac/nsidc0092_greenland_ice_thickness.gd.html
+# note that the gdal transform uses CORNERS, not CENTRES (which are e.g. -800000)
 grids['5km'] = {'spatial_ref': '+proj=sterea +lat_0=90 +lat_ts=71 +lon_0=-39 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs',
-                'geo_transform': (-800000, 5000, 0, -600000, 0, -5000)}
+                'geo_transform': (-802500, 5000, 0, -597500, 0, -5000)}
 
 # 10, 20 and 25 km grids are all the same as one another
 grids['25km'] = {'spatial_ref': '+proj=sterea +lat_0=70.5 +lon_0=-40 +k=1 +datum=WGS84 +units=m',
@@ -230,7 +231,7 @@ def create_mar_res(xarray_obj, grid_info, gdal_dtype, ret_xarray=False, interp_t
                     grid_info['xmin'], grid_info['ymax'],
                     grid_info['xres'], grid_info['yres'],
                     dtype=gdal_dtype,
-                    interp_type=interp_type)
+                    interp_type=interp_type, nodata=0)
 
     if ret_xarray:
         cx, cy = mask_7km.coordinates(latlon=True)
