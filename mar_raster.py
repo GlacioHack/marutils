@@ -106,6 +106,11 @@ def open_xr(filename, X_name='X', Y_name='Y', **kwargs):
     elif 'X10_153' in ds.coords:
         ds.rename({'X10_153':X_name}, inplace=True)
         ds.rename({'Y21_288':Y_name}, inplace=True)
+
+    # 15 km grid
+    elif 'X20_196' in ds.coords:
+        ds.rename({'X20_196':X_name}, inplace=True)
+        ds.rename({'Y19_216':Y_name}, inplace=True)
         
     # 20 km grid
     elif 'X12_84' in ds.coords:
