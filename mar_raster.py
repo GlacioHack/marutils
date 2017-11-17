@@ -20,27 +20,26 @@ except ImportError:
 import xarray as xr
 import cartopy.crs
 from glob import glob
+import re
 
 import georaster
 
 ###
-# MAR Grid Definitions
+# MAR Grid Definitions 
+# Deprecated. Remains here for reference
 
-grids = {}
+# grids = {}
 
-# 5 km grid:
-# ftp://ftp.climato.be/fettweis/MARv3.5/Greenland/readme.txt
-# http://nsidc.org/data/docs/daac/nsidc0092_greenland_ice_thickness.gd.html
-# note that the gdal transform uses CORNERS, not CENTRES (which are e.g. -800000)
-grids['5km'] = {'spatial_ref': '+proj=sterea +lat_0=90 +lat_ts=71 +lon_0=-39 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs',
-                'geo_transform': (-802500, 5000, 0, -597500, 0, -5000)}
+# # 5 km grid:
+# # ftp://ftp.climato.be/fettweis/MARv3.5/Greenland/readme.txt
+# # http://nsidc.org/data/docs/daac/nsidc0092_greenland_ice_thickness.gd.html
+# # note that the gdal transform uses CORNERS, not CENTRES (which are e.g. -800000)
+# grids['5km'] = {'spatial_ref': '+proj=sterea +lat_0=90 +lat_ts=71 +lon_0=-39 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs',
+#                 'geo_transform': (-802500, 5000, 0, -597500, 0, -5000)}
 
-# 10, 20 and 25 km grids are all the same as one another
-grids['25km'] = {'spatial_ref': '+proj=sterea +lat_0=70.5 +lon_0=-40 +k=1 +datum=WGS84 +units=m',
-                 'geo_transform': (-787500, 25000, 0, 1537500, 0, -25000)}
-
-grids['20km'] = grids['25km']
-grids['10km'] = grids['25km']
+# # 10, 20 and 25 km grids are all the same as one another
+# grids['25km'] = {'spatial_ref': '+proj=sterea +lat_0=70.5 +lon_0=-40 +k=1 +datum=WGS84 +units=m',
+#                  'geo_transform': (-787500, 25000, 0, 1537500, 0, -25000)}
 
 ###
 
@@ -96,6 +95,19 @@ def open_xr(filename, X_name='X', Y_name='Y', **kwargs):
     """
 
     ds = xr.open_dataset(filename, **kwargs)
+
+    # At some point I could convert this function to searching for the X
+    # and Y dimensions 
+    # Can't work out the regex at the moment
+    # coords = list(ds.coords)
+    # r = re.compile('/^[X,Y]*')
+    # newlist = filter(r.match, coords)
+
+
+    # Xname = [s for s in coords if "X" in s]
+    # Yname = [s for s in coords if "Y" in s]
+
+
 
     # 25 km grid
     if 'X10_69' in ds.coords:
@@ -163,42 +175,31 @@ def open_mfxr(files, dim='TIME', transform_func=None):
 
 
 
-def cartopy_proj(grid):
-    """ Return Cartopy CRS for specified MAR grid """
-
-    p = spatial_ref(grid)
-    crs = cartopy.crs.Stereographic(central_latitude=p.GetProjParm('latitude_of_origin'),
-        central_longitude=p.GetProjParm('central_meridian'))
-
-    return crs
-
-
-
-def spatial_ref(grid):
-    """Passed str grid returns OSR Spatial Reference instance"""
-
-    spatial_ref = osr.SpatialReference()
-    spatial_ref.ImportFromProj4(grids[grid]['spatial_ref'])
-
-    return spatial_ref
-
-
-
-def proj(grid):
-    """ Passed str grid returns a pyproj instance """
-
-    srs = spatial_ref(grid)
-    return pyproj.Proj(srs.ExportToProj4())
-
-
-
-def extent(ds):
-    """ Return extent of xarray dataset [xmin,xmax,ymin,ymax] """
+def get_extent(ds):
+    """ Return extent of xarray dataset [xmin,xmax,ymin,ymax] (corners) """
     xmin = float(ds.X.min())
     xmax = float(ds.X.max())
     ymin = float(ds.Y.min())
     ymax = float(ds.Y.max())
+
+    # MAR values are grid centres so we need to do adjust to grid corners
+    xsize, ysize = self.get_pixel_size(ds)
+    xsize2 = xsize / 2
+    ysize2 = ysize / 2
+    xmin -= xsize2
+    ymax -= ysize2
+    xmax += xsize2
+    ymin += ysize2
+
     return (xmin,xmax,ymin,ymax)
+
+
+
+def get_pixel_size(ds):
+    """ Return pixel dimensions in metres (xpixel, ypixel) """
+    xpx = float(ds.X[1] - ds.X[0])
+    ypx = float(ds.Y[0] - ds.Y[1])
+    return (xpx, ypx)
 
 
 
@@ -277,3 +278,83 @@ def create_annual_mar_res(multi_annual_xarray, MAR_MSK, mar_kws, gdal_dtype, **k
     # Convert to multi-annual DataArray
     masks = xr.DataArray(store, coords=[multi_annual_xarray.TIME, MAR_MSK.Y, MAR_MSK.X], dims=['TIME', 'Y', 'X'])
     return masks
+
+
+
+def create_proj4(ds_fn=None, ds=None, proj='sterea', lat_0=90,
+    base='+k=1 +datum=WGS84 +units=m', return_pyproj=True):
+    """ Return proj4 string for dataset.
+
+    Create proj4 string using combination of values determined from dataset
+    and those which must be known in advance (projection, lat_0).
+
+    :param ds_fn: filename string of MARdataset
+    :type ds_fn: str
+    :param ds: xarray representation of MAR dataset opened using mar_raster
+    :type ds: xr.Dataset
+    :param proj: Proj.4 projection
+    :type proj: str
+    :param lat_0: Latitude of origin (degrees)
+    :type lat_0: float, int
+    :param base: base Proj.4 string for MAR
+    :type base: str
+    :param return_pyproj: If True return pyproj.Proj object, otherwise string
+    :type return_pyproj: bool
+
+    :return: Proj.4 string or pyproj.Proj object
+    :rtype: str, pyproj.Proj
+
+    """
+    
+    if ds == None:
+        ds = self.open_xr(ds_fn)
+
+    lat_ts = np.round(float(ds.LAT.sel(X=0,Y=0, method='nearest').values), 1)
+    lon_0 = np.round(float(ds.LON.sel(X=0,Y=0, method='nearest').values), 1)
+
+    proj4 = '%s +lat_ts=%s +lon_0=%s' %(base, lat_ts, lon_0)
+
+    if return_pyproj:
+        return pyproj.Proj(proj4)
+    else:
+        return proj4
+
+
+
+def create_transform(ds_fn=None, ds=None):
+    """ Return GDAL GeoTransform for dataset.
+
+    :param ds_fn: filename string of MARdataset
+    :type ds_fn: str
+    :param ds: xarray representation of MAR dataset opened using mar_raster
+    :type ds: xr.Dataset
+
+    :return: GeoTransform (top left x, w-e size, 0, top left y, 0, n-s size)
+    :rtype: tuple
+
+    """
+   
+    if ds == None:
+        ds = self.open_xr(ds_fn)
+
+    # geotransform suitable for GDAL (i.e. cell corner not centre)
+    # [xmin,xmax,ymin,ymax]
+    extent = self.get_extent(ds)
+    xsize, ysize = self.get_pixel_size(ds)
+    # (top left x, w-e cell size, 0, top left y, 0, n-s cell size (-ve))
+    trans = (extent[0], xsize, 0, extent[3], 0, ysize)
+
+    return trans
+
+
+
+# This function does not fill well in this module but is retained commented-out
+# for reference
+# def cartopy_proj(grid):
+#     """ Return Cartopy CRS for specified MAR grid """
+
+#     p = spatial_ref(grid)
+#     crs = cartopy.crs.Stereographic(central_latitude=p.GetProjParm('latitude_of_origin'),
+#         central_longitude=p.GetProjParm('central_meridian'))
+
+#     return crs
