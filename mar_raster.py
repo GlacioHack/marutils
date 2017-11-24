@@ -307,12 +307,12 @@ def create_proj4(ds_fn=None, ds=None, proj='sterea', lat_0=90,
     """
     
     if ds == None:
-        ds = self.open_xr(ds_fn)
+        ds = open_xr(ds_fn)
 
     lat_ts = np.round(float(ds.LAT.sel(X=0,Y=0, method='nearest').values), 1)
     lon_0 = np.round(float(ds.LON.sel(X=0,Y=0, method='nearest').values), 1)
 
-    proj4 = '%s +lat_ts=%s +lon_0=%s' %(base, lat_ts, lon_0)
+    proj4 = '+proj=%s +lat_ts=%s +lon_0=%s +lat_0=%s %s' %(proj, lat_ts, lon_0, lat_0, base)
 
     if return_pyproj:
         return pyproj.Proj(proj4)
@@ -335,12 +335,12 @@ def create_transform(ds_fn=None, ds=None):
     """
    
     if ds == None:
-        ds = self.open_xr(ds_fn)
+        ds = open_xr(ds_fn)
 
     # geotransform suitable for GDAL (i.e. cell corner not centre)
     # [xmin,xmax,ymin,ymax]
-    extent = self.get_extent(ds)
-    xsize, ysize = self.get_pixel_size(ds)
+    extent = get_extent(ds)
+    xsize, ysize = get_pixel_size(ds)
     # (top left x, w-e cell size, 0, top left y, 0, n-s cell size (-ve))
     trans = (extent[0], xsize, 0, extent[3], 0, ysize)
 
