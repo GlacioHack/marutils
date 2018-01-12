@@ -90,6 +90,9 @@ def open_xr(filename, X_name='X', Y_name='Y', **kwargs):
     Load MAR NetCDF, setting X and Y coordinate names to X_name and Y_name,
     and multiplying by 1000 to convert coordinates to metres.
 
+    These 'odd' X and Y names originate from the clipping of extent undertaken
+    by the Concat ferret routine.
+
     Use **kawrgs to specify 'chunk' parameter if desired.
 
     """
@@ -133,6 +136,11 @@ def open_xr(filename, X_name='X', Y_name='Y', **kwargs):
     elif 'X12_203' in ds.coords:
         ds.rename({'X12_203':X_name}, inplace=True)
         ds.rename({'Y20_377':Y_name}, inplace=True)
+
+    # 20 km SW grid
+    elif 'X5_55' in ds.coords:
+        s.rename({'X5_55':X_name}, inplace=True)
+        ds.rename({'Y5_65':Y_name}, inplace=True)
 
     ds['X'] = ds['X'] * 1000
     ds['Y'] = ds['Y'] * 1000
@@ -281,7 +289,7 @@ def create_annual_mar_res(multi_annual_xarray, MAR_MSK, mar_kws, gdal_dtype, **k
 
 
 
-def create_proj4(ds_fn=None, ds=None, proj='sterea', lat_0=90,
+def create_proj4(ds_fn=None, ds=None, proj='sterea',
     base='+k=1 +datum=WGS84 +units=m', return_pyproj=True):
     """ Return proj4 string for dataset.
 
@@ -306,13 +314,13 @@ def create_proj4(ds_fn=None, ds=None, proj='sterea', lat_0=90,
 
     """
     
-    if ds == None:
+    if ds is None:
         ds = open_xr(ds_fn)
 
-    lat_ts = np.round(float(ds.LAT.sel(X=0,Y=0, method='nearest').values), 1)
+    lat_0 = np.round(float(ds.LAT.sel(X=0,Y=0, method='nearest').values), 1)
     lon_0 = np.round(float(ds.LON.sel(X=0,Y=0, method='nearest').values), 1)
 
-    proj4 = '+proj=%s +lat_ts=%s +lon_0=%s +lat_0=%s %s' %(proj, lat_ts, lon_0, lat_0, base)
+    proj4 = '+proj=%s +lon_0=%s +lat_0=%s %s' %(proj, lon_0, lat_0, base)
 
     if return_pyproj:
         return pyproj.Proj(proj4)
