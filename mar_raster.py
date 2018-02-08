@@ -302,8 +302,6 @@ def create_proj4(ds_fn=None, ds=None, proj='sterea',
     :type ds: xr.Dataset
     :param proj: Proj.4 projection
     :type proj: str
-    :param lat_0: Latitude of origin (degrees)
-    :type lat_0: float, int
     :param base: base Proj.4 string for MAR
     :type base: str
     :param return_pyproj: If True return pyproj.Proj object, otherwise string
