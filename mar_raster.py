@@ -110,37 +110,62 @@ def open_xr(filename, X_name='X', Y_name='Y', **kwargs):
     # Xname = [s for s in coords if "X" in s]
     # Yname = [s for s in coords if "Y" in s]
 
+    Xds = Yds = None
+    for coord in ds.coords:
+        if Xds is None:
+            Xds = re.match('X[0-9]*_[0-9]*', coord)
+        if Yds is None:
+            Yds = re.match('Y[0-9]*_[0-9]*', coord)
+
+        if (Xds is not None) and (Yds is not None):
+            break
+    
+
+    if Xds is None:
+        print ('No X dimension identified')
+        raise ValueError
+    if Yds is None:
+        print ('No Y dimension identified')
+        raise ValueError
 
 
-    # 25 km grid
-    if 'X10_69' in ds.coords:
-        ds.rename({'X10_69':X_name}, inplace=True)
-        ds.rename({'Y18_127':Y_name}, inplace=True)
+    ds.rename({Xds.string:X_name}, inplace=True)
+    ds.rename({Yds.string:Y_name}, inplace=True)
 
-    # 10 km grid
-    elif 'X10_153' in ds.coords:
-        ds.rename({'X10_153':X_name}, inplace=True)
-        ds.rename({'Y21_288':Y_name}, inplace=True)
 
-    # 15 km grid
-    elif 'X20_196' in ds.coords:
-        ds.rename({'X20_196':X_name}, inplace=True)
-        ds.rename({'Y19_216':Y_name}, inplace=True)
+    # # 25 km grid
+    # if 'X10_69' in ds.coords:
+    #     ds.rename({'X10_69':X_name}, inplace=True)
+    #     ds.rename({'Y18_127':Y_name}, inplace=True)
+
+    # # 10 km grid
+    # elif 'X10_153' in ds.coords:
+    #     ds.rename({'X10_153':X_name}, inplace=True)
+    #     ds.rename({'Y21_288':Y_name}, inplace=True)
+
+    # # 15 km grid
+    # elif 'X20_196' in ds.coords:
+    #     ds.rename({'X20_196':X_name}, inplace=True)
+    #     ds.rename({'Y19_216':Y_name}, inplace=True)
         
-    # 20 km grid
-    elif 'X12_84' in ds.coords:
-        ds.rename({'X12_84':X_name}, inplace=True)
-        ds.rename({'Y21_155':Y_name}, inplace=True)
+    # # 20 km grid
+    # elif 'X12_84' in ds.coords:
+    #     ds.rename({'X12_84':X_name}, inplace=True)
+    #     ds.rename({'Y21_155':Y_name}, inplace=True)
 
-    # 7.5 km grid
-    elif 'X12_203' in ds.coords:
-        ds.rename({'X12_203':X_name}, inplace=True)
-        ds.rename({'Y20_377':Y_name}, inplace=True)
+    # # 7.5 km grid
+    # elif 'X12_203' in ds.coords:
+    #     ds.rename({'X12_203':X_name}, inplace=True)
+    #     ds.rename({'Y20_377':Y_name}, inplace=True)
 
-    # 20 km SW grid
-    elif 'X5_55' in ds.coords:
-        s.rename({'X5_55':X_name}, inplace=True)
-        ds.rename({'Y5_65':Y_name}, inplace=True)
+    # # 20 km SW grid
+    # elif 'X5_55' in ds.coords:
+    #     ds.rename({'X5_55':X_name}, inplace=True)
+    #     ds.rename({'Y5_65':Y_name}, inplace=True)
+
+    # elif 'x' in ds.coords:
+    #     ds.rename({'x':X_name}, inplace=True)
+    #     ds.rename({'y':Y_name}, inplace=True)        
 
     ds['X'] = ds['X'] * 1000
     ds['Y'] = ds['Y'] * 1000
@@ -191,7 +216,7 @@ def get_extent(ds):
     ymax = float(ds.Y.max())
 
     # MAR values are grid centres so we need to do adjust to grid corners
-    xsize, ysize = self.get_pixel_size(ds)
+    xsize, ysize = get_pixel_size(ds)
     xsize2 = xsize / 2
     ysize2 = ysize / 2
     xmin -= xsize2
@@ -294,7 +319,7 @@ def create_proj4(ds_fn=None, ds=None, proj='sterea',
     """ Return proj4 string for dataset.
 
     Create proj4 string using combination of values determined from dataset
-    and those which must be known in advance (projection, lat_0).
+    and those which must be known in advance (projection).
 
     :param ds_fn: filename string of MARdataset
     :type ds_fn: str
