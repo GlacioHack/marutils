@@ -314,7 +314,7 @@ def create_annual_mar_res(multi_annual_xarray, MAR_MSK, mar_kws, gdal_dtype, **k
 
 
 
-def create_proj4(ds_fn=None, ds=None, proj='sterea',
+def create_proj4(ds_fn=None, ds=None, proj='stere',
     base='+k=1 +datum=WGS84 +units=m', return_pyproj=True):
     """ Return proj4 string for dataset.
 
