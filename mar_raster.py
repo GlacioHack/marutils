@@ -129,8 +129,8 @@ def open_xr(filename, X_name='X', Y_name='Y', **kwargs):
         raise ValueError
 
 
-    ds.rename({Xds.string:X_name}, inplace=True)
-    ds.rename({Yds.string:Y_name}, inplace=True)
+    ds = ds.rename({Xds.string:X_name})
+    ds = ds.rename({Yds.string:Y_name})
 
 
     # # 25 km grid
