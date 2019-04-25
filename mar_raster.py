@@ -365,7 +365,7 @@ def create_transform(ds_fn=None, ds=None):
 
     """
    
-    if ds == None:
+    if ds is None:
         ds = open_xr(ds_fn)
 
     # geotransform suitable for GDAL (i.e. cell corner not centre)
@@ -376,6 +376,46 @@ def create_transform(ds_fn=None, ds=None):
     trans = (extent[0], xsize, 0, extent[3], 0, ysize)
 
     return trans
+
+
+
+def gris_mask(ds_fn=None, ds=None):
+    """ Return xarray representation of GrIS mask processed according to 
+    Xavier Fettweis' method (see email XF-->AT 5 April 2018)
+
+    Ferret method:
+    yes? LET msk_tmp1            = if ( lat[d=1]  GE 75   AND lon[d=1] LE -75 ) then  0           else 1
+    yes? LET msk_tmp2a           = if ( lat[d=1]  GE 79.5 AND lon[d=1] LE -67 ) then  0           else msk_tmp1
+    yes? LET msk_tmp2            = if ( lat[d=1]  GE 81.2 AND lon[d=1] LE -63 ) then  0           else msk_tmp2a
+    yes? let km3 = 15*15/(1000*1000)
+    yes? LET msk2 = IF ( msk[d=1]  ge 50 ) then (1*msk_tmp2)*msk/100 else 0
+    yes? let RUsum=RU*msk2*km3
+    yes? list RUsum[k=1,x=@sum,y=@sum,l=@sum] 
+
+    :param ds_fn: filename string of MARdataset
+    :type ds_fn: str
+    :param ds: xarray representation of MAR dataset opened using mar_raster
+    :type ds: xr.Dataset
+
+    :return: MAR mask with XF GrIS-specific post-processing applied
+    :rtype: xr.DataArray
+
+    """
+
+    if ds is None:
+        ds = open_xr(ds_fn)
+
+    blank = xr.DataArray(np.zeros((len(ds.Y),len(ds.X))), dims=['Y','X'], 
+    coords={'Y':ds.Y, 'X':ds.X})
+    msk_tmp1 = blank.where((ds.LAT >= 75) & (ds.LON <= -75), other=1)
+    msk_tmp2a = blank.where((ds.LAT >= 79.5) & (ds.LON <= -67), other=msk_tmp1)
+    msk_tmp2 = blank.where((ds.LAT >= 81.2) & (ds.LON <= -63), other=msk_tmp2a)
+
+    #msk2 = (ds.MSK.where(ds.MSK >= 50) * msk_tmp2) / 100
+    msk_here = ds.MSK.where(ds.MSK >= 50, other=0)
+    msk2 = (1*msk_tmp2) * msk_here/100
+
+    return msk2
 
 
 
