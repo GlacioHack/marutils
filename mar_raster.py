@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Load MAR NetCDF grids into a georaster instance or into xarray.
+Load MAR NetCDF grids into into xarray or a GeoRaster instance.
 
 Needed because the NetCDF grids which MAR outputs are not geo-referenced in 
 any of the several ways that GDAL understands.
@@ -24,7 +24,10 @@ import re
 import pandas as pd
 import datetime as dt
 
-import georaster
+try:
+    import georaster
+except ImportError:
+    gr_avail = False
 
 ###
 # MAR Grid Definitions 
@@ -57,9 +60,10 @@ grids are cell centres? -- doesn't seem to be the case, I tried adding on
 os.environ['GDAL_NETCDF_BOTTOMUP'] = 'NO'
 
 
-
 def load(filename, grid):
-    """ Load a MAR NetCDF file with the specified grid type.
+    """ Load a MAR NetCDF file with the specified grid type using GeoRaster.
+
+    DEPRECATED
 
     Parameters:
         filename : string, the path to the file with the relevant sub-dataset 
@@ -74,16 +78,22 @@ def load(filename, grid):
 
     """
 
-    spatial_ref = osr.SpatialReference()
-    spatial_ref.ImportFromProj4(grids[grid]['spatial_ref'])
-    rast = georaster.MultiBandRaster(filename, spatial_ref=spatial_ref,
-                                     geo_transform=grids[grid]['geo_transform'])
+    if gr_avail:
 
-    # Flip the raster bands to restore correct orientation
-    for i in rast.bands:
-        rast.r[:, :, i-1] = np.flipud(rast.r[:,:, i-1])
+        spatial_ref = osr.SpatialReference()
+        spatial_ref.ImportFromProj4(grids[grid]['spatial_ref'])
+        rast = georaster.MultiBandRaster(filename, spatial_ref=spatial_ref,
+                                         geo_transform=grids[grid]['geo_transform'])
 
-    return rast
+        # Flip the raster bands to restore correct orientation
+        for i in rast.bands:
+            rast.r[:, :, i-1] = np.flipud(rast.r[:,:, i-1])
+
+        return rast
+
+    else:
+        print('GeoRaster dependency not available.')
+        raise ImportError
 
 
 
@@ -97,20 +107,19 @@ def open_xr(filename, X_name='X', Y_name='Y', **kwargs):
 
     Use **kawrgs to specify 'chunk' parameter if desired.
 
+    :param filename: The file path to open
+    :type filename: str
+    :param X_name: Name of X coordinate to rename to
+    :type X_name: str
+    :param Y_name: Name of Y coordinate to rename to
+    :type Y_name: str
+
+    :return: opened Dataset
+    :rtype: xr.Dataset
+
     """
 
     ds = xr.open_dataset(filename, **kwargs)
-
-    # At some point I could convert this function to searching for the X
-    # and Y dimensions 
-    # Can't work out the regex at the moment
-    # coords = list(ds.coords)
-    # r = re.compile('/^[X,Y]*')
-    # newlist = filter(r.match, coords)
-
-
-    # Xname = [s for s in coords if "X" in s]
-    # Yname = [s for s in coords if "Y" in s]
 
     Xds = Yds = None
     for coord in ds.coords:
@@ -134,41 +143,6 @@ def open_xr(filename, X_name='X', Y_name='Y', **kwargs):
     ds = ds.rename({Xds.string:X_name})
     ds = ds.rename({Yds.string:Y_name})
 
-
-    # # 25 km grid
-    # if 'X10_69' in ds.coords:
-    #     ds.rename({'X10_69':X_name}, inplace=True)
-    #     ds.rename({'Y18_127':Y_name}, inplace=True)
-
-    # # 10 km grid
-    # elif 'X10_153' in ds.coords:
-    #     ds.rename({'X10_153':X_name}, inplace=True)
-    #     ds.rename({'Y21_288':Y_name}, inplace=True)
-
-    # # 15 km grid
-    # elif 'X20_196' in ds.coords:
-    #     ds.rename({'X20_196':X_name}, inplace=True)
-    #     ds.rename({'Y19_216':Y_name}, inplace=True)
-        
-    # # 20 km grid
-    # elif 'X12_84' in ds.coords:
-    #     ds.rename({'X12_84':X_name}, inplace=True)
-    #     ds.rename({'Y21_155':Y_name}, inplace=True)
-
-    # # 7.5 km grid
-    # elif 'X12_203' in ds.coords:
-    #     ds.rename({'X12_203':X_name}, inplace=True)
-    #     ds.rename({'Y20_377':Y_name}, inplace=True)
-
-    # # 20 km SW grid
-    # elif 'X5_55' in ds.coords:
-    #     ds.rename({'X5_55':X_name}, inplace=True)
-    #     ds.rename({'Y5_65':Y_name}, inplace=True)
-
-    # elif 'x' in ds.coords:
-    #     ds.rename({'x':X_name}, inplace=True)
-    #     ds.rename({'y':Y_name}, inplace=True)        
-
     ds['X'] = ds['X'] * 1000
     ds['Y'] = ds['Y'] * 1000
 
@@ -178,7 +152,6 @@ def open_xr(filename, X_name='X', Y_name='Y', **kwargs):
 
 def open_mfxr(files, dim='TIME', transform_func=None):
     """
-
     Load multiple MAR files into a single xarray object, performing some
     aggregation first to make this computationally feasible.
 
@@ -190,6 +163,16 @@ def open_mfxr(files, dim='TIME', transform_func=None):
 
     Based on http://xray.readthedocs.io/en/v0.7.1/io.html#combining-multiple-files
     See also http://xray.readthedocs.io/en/v0.7.1/dask.html
+
+    :param files: filesystem path to open, with wildcard expression (*)
+    :type files: str
+    :param dim: name of dimension on which concatenate
+    :type dim: str
+    :param transform_func: a function to use to reduce/aggregate data
+    :type transform_func: function
+
+    :return: concatenated dataset
+    :rtype: xr.Dataset
 
     """
 
@@ -211,7 +194,15 @@ def open_mfxr(files, dim='TIME', transform_func=None):
 
 
 def get_extent(ds):
-    """ Return extent of xarray dataset [xmin,xmax,ymin,ymax] (corners) """
+    """ Return extent of xarray dataset [xmin,xmax,ymin,ymax] (corners) 
+
+    :param ds: Data from which to determine extent
+    :type ds: xr.DataArray or xr.Dataset
+
+    :return: (Xmin, Xmax, Ymin, Ymax)
+    :rtype: tuple
+
+    """
     xmin = float(ds.X.min())
     xmax = float(ds.X.max())
     ymin = float(ds.Y.min())
@@ -231,7 +222,15 @@ def get_extent(ds):
 
 
 def get_pixel_size(ds):
-    """ Return pixel dimensions in metres (xpixel, ypixel) """
+    """ Return pixel dimensions in metres (xpixel, ypixel)
+
+    :param ds: Data from which to determine pixel size
+    :type ds: xr.DataArray or xr.Dataset
+
+    :return: X pixel dimension, Y pixel dimension
+    :rtype: tuple
+
+    """
     xpx = float(ds.X[1] - ds.X[0])
     ypx = float(ds.Y[0] - ds.Y[1])
     return (xpx, ypx)
@@ -256,6 +255,10 @@ def create_mar_res(xarray_obj, grid_info, gdal_dtype, ret_xarray=False, interp_t
     :rtype: GeoRaster.SingleBandRaster, xarray.DataArray
 
     """
+
+    if gr_avail == False:
+        print('GeoRaster dependency not available.')
+        raise ImportError
 
     # Convert to numpy array and squeeze the extra dimension away
     as_array = xarray_obj.values.squeeze()
@@ -311,7 +314,9 @@ def create_annual_mar_res(multi_annual_xarray, MAR_MSK, mar_kws, gdal_dtype, **k
         n += 1
 
     # Convert to multi-annual DataArray
-    masks = xr.DataArray(store, coords=[multi_annual_xarray.TIME, MAR_MSK.Y, MAR_MSK.X], dims=['TIME', 'Y', 'X'])
+    masks = xr.DataArray(store, 
+        coords=[multi_annual_xarray.TIME, MAR_MSK.Y, MAR_MSK.X], 
+        dims=['TIME', 'Y', 'X'])
     return masks
 
 
@@ -424,9 +429,11 @@ def gris_mask(ds_fn=None, ds=None):
 def get_Xhourly_start_end(Xhourly_da):
     """ Return start and end timestamps of an X-hourly DataArray
 
+    Used for DataArrays containing TIME and ATMXH coordinates.
+
     Assumes data are HOURLY, sub-hourly data are not catered for.
 
-    :param Xhourly_da: an X-hourly DataArray containing ATMXH coordinate
+    :param Xhourly_da: an X-hourly DataArray
     :type Xhourly_da: xr.DataArray
 
     :return: start (0), end (1) timestamps in datetime.datetime type, freq (3)
@@ -455,6 +462,8 @@ def squeeze_Xhourly(Xhourly_da):
     """ 
     Squeeze X-hourly dimension out of variable, yielding hourly TIME dimension.
 
+    Used for DataArrays with coordinates (Y, X, ATMXH, TIME).
+
     :param Xhourly_da: an X-hourly DataArray containing ATMXH coordinate
     :type Xhourly_da: xr.DataArray
 
@@ -477,7 +486,9 @@ def squeeze_Xhourly(Xhourly_da):
 
 def Xhourly_pt_to_series(Xhourly_da):
     """
-    Generate pd.Series of data from a point held in an X-hourly dimension.
+    Generate pd.Series of data from a point with an X-hourly dimension.
+
+    Used for a DataArray with coordinates (Y=1, X=1, ATMXH, TIME).
     
     Assumes data are HOURLY, sub-hourly data are not catered for.
 
@@ -497,6 +508,9 @@ def Xhourly_pt_to_series(Xhourly_da):
 
     return series
    
+
+
+
 
 # This function does not fill well in this module but is retained commented-out
 # for reference
