@@ -21,6 +21,8 @@ import xarray as xr
 import cartopy.crs
 from glob import glob
 import re
+import pandas as pd
+import datetime as dt
 
 import georaster
 
@@ -406,7 +408,7 @@ def gris_mask(ds_fn=None, ds=None):
         ds = open_xr(ds_fn)
 
     blank = xr.DataArray(np.zeros((len(ds.Y),len(ds.X))), dims=['Y','X'], 
-    coords={'Y':ds.Y, 'X':ds.X})
+        coords={'Y':ds.Y, 'X':ds.X})
     msk_tmp1 = blank.where((ds.LAT >= 75) & (ds.LON <= -75), other=1)
     msk_tmp2a = blank.where((ds.LAT >= 79.5) & (ds.LON <= -67), other=msk_tmp1)
     msk_tmp2 = blank.where((ds.LAT >= 81.2) & (ds.LON <= -63), other=msk_tmp2a)
@@ -418,6 +420,83 @@ def gris_mask(ds_fn=None, ds=None):
     return msk2
 
 
+
+def get_Xhourly_start_end(Xhourly_da):
+    """ Return start and end timestamps of an X-hourly DataArray
+
+    Assumes data are HOURLY, sub-hourly data are not catered for.
+
+    :param Xhourly_da: an X-hourly DataArray containing ATMXH coordinate
+    :type Xhourly_da: xr.DataArray
+
+    :return: start (0), end (1) timestamps in datetime.datetime type, freq (3)
+    :rtype: tuple
+
+    """
+
+    hrs_in_da = len(Xhourly_da['ATMXH'])
+    if np.mod(24, hrs_in_da) > 0:
+        raise NotImplementedError
+    
+    freq = 24 / hrs_in_da
+    
+    dt_start = pd.to_datetime(Xhourly_da.TIME.isel(TIME=0).values)
+    dt_start = dt_start - dt.timedelta(hours=(dt_start.hour-freq))
+
+    dt_end = pd.to_datetime(Xhourly_da.TIME.isel(TIME=-1).values)
+    dt_end = dt_end - dt.timedelta(hours=dt_end.hour)
+    dt_end = dt_end + dt.timedelta(hours=24)
+
+    return (dt_start, dt_end, freq)
+
+
+
+def squeeze_Xhourly(Xhourly_da):
+    """ 
+    Squeeze X-hourly dimension out of variable, yielding hourly TIME dimension.
+
+    :param Xhourly_da: an X-hourly DataArray containing ATMXH coordinate
+    :type Xhourly_da: xr.DataArray
+
+    :return: DataArray with ATMXH dimension removed and hours on the TIME dimension.
+    :rtype: xr.DataArray
+
+    """
+
+    dt_start, dt_end, freq = get_Xhourly_start_end(Xhourly_da)
+
+    index = pd.date_range(start=dt_start, end=dt_end, freq='%sH' %freq)
+
+    hourly_da = Xhourly_da.stack(TIME_H=('ATMXH', 'TIME'))
+    hourly_da['TIME_H'] = index
+    hourly_da = hourly_da.rename({'TIME_H':'TIME'})
+
+    return hourly_da
+
+
+
+def Xhourly_pt_to_series(Xhourly_da):
+    """
+    Generate pd.Series of data from a point held in an X-hourly dimension.
+    
+    Assumes data are HOURLY, sub-hourly data are not catered for.
+
+    :param Xhourly_da: an X-hourly DataArray containing ATMXH coordinate
+    :type Xhourly_da: xr.DataArray
+
+    :return: DataArray with ATMXH dimension removed and hours on the TIME dimension.
+    :rtype: xr.DataArray
+
+    """
+
+    dt_start, dt_end, freq = get_Xhourly_start_end(Xhourly_da)
+
+    index = pd.date_range(start=dt_start, end=dt_end, freq='%sH' %freq)
+    series = Xhourly_da.to_pandas().stack()
+    series.index = index
+
+    return series
+   
 
 # This function does not fill well in this module but is retained commented-out
 # for reference
