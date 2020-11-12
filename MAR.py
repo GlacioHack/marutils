@@ -15,75 +15,16 @@ import re
 import datetime as dt
 
 import xarray as xr
+import rioxarray
 import pandas as pd
 from rasterio.crs import CRS
 
-
-###
-# MAR Grid Definitions 
-# Deprecated. Remains here for reference
-
-# grids = {}
-
-# # 5 km grid:
-# # ftp://ftp.climato.be/fettweis/MARv3.5/Greenland/readme.txt
-# # http://nsidc.org/data/docs/daac/nsidc0092_greenland_ice_thickness.gd.html
-# # note that the gdal transform uses CORNERS, not CENTRES (which are e.g. -800000)
-# grids['5km'] = {'spatial_ref': '+proj=sterea +lat_0=90 +lat_ts=71 +lon_0=-39 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs',
-#                 'geo_transform': (-802500, 5000, 0, -597500, 0, -5000)}
-
-# # 10, 20 and 25 km grids are all the same as one another
-# grids['25km'] = {'spatial_ref': '+proj=sterea +lat_0=70.5 +lon_0=-40 +k=1 +datum=WGS84 +units=m',
-#                  'geo_transform': (-787500, 25000, 0, 1537500, 0, -25000)}
-
-###
-
-"""
-N.b. the pyproj transform yields lat/lon corners coords for bottom left that 
-are not quite the same as those in the LAT and LON MAR grids. Perhaps the MAR
-grids are cell centres? -- doesn't seem to be the case, I tried adding on
-12.5km and the lat/lons still didn't match precisely.
-"""
-
-
-def load(filename, grid):
-    """ Load a MAR NetCDF file with the specified grid type using GeoRaster.
-
-    DEPRECATED
-
-    Parameters:
-        filename : string, the path to the file with the relevant sub-dataset 
-            referencing, e.g. 
-            'NETCDF:"MARv3.5.2-10km-monthly-ERA-Interim-1979.nc":AL'
-
-        grid : string, corresponding to entry in grids dictionary.
-
-
-    Returns:
-        MultiBandRaster instance, over full domain, all bands loaded
-
-    """
-
-    if gr_avail:
-
-        spatial_ref = osr.SpatialReference()
-        spatial_ref.ImportFromProj4(grids[grid]['spatial_ref'])
-        rast = georaster.MultiBandRaster(filename, spatial_ref=spatial_ref,
-                                         geo_transform=grids[grid]['geo_transform'])
-
-        # Flip the raster bands to restore correct orientation
-        for i in rast.bands:
-            rast.r[:, :, i-1] = np.flipud(rast.r[:,:, i-1])
-
-        return rast
-
-    else:
-        print('GeoRaster dependency not available.')
-        raise ImportError
+MAR_PROJECTION = 'stere'
+MAR_BASE_PROJ4 = '+k=1 +datum=WGS84 +units=m'
 
 
 
-def open_xr(filename, X_name='X', Y_name='Y', **kwargs):
+def open(filename, **kwargs):
     """
     Load MAR NetCDF, setting X and Y coordinate names to X_name and Y_name,
     and multiplying by 1000 to convert coordinates to metres.
@@ -95,44 +36,16 @@ def open_xr(filename, X_name='X', Y_name='Y', **kwargs):
 
     :param filename: The file path to open
     :type filename: str
-    :param X_name: Name of X coordinate to rename to
-    :type X_name: str
-    :param Y_name: Name of Y coordinate to rename to
-    :type Y_name: str
 
     :return: opened Dataset
-    :rtype: xr.Dataset
+    :rtype: xr.Dataset with rio attribute
 
     """
 
-    ds = xr.open_dataset(filename, **kwargs)
-
-    Xds = Yds = None
-    for coord in ds.coords:
-        if Xds is None:
-            Xds = re.match('X[0-9]*_[0-9]*', coord)
-        if Yds is None:
-            Yds = re.match('Y[0-9]*_[0-9]*', coord)
-
-        if (Xds is not None) and (Yds is not None):
-            break
-    
-
-    if Xds is None:
-        print ('No X dimension identified')
-        raise ValueError
-    if Yds is None:
-        print ('No Y dimension identified')
-        raise ValueError
-
-
-    ds = ds.rename({Xds.string:X_name})
-    ds = ds.rename({Yds.string:Y_name})
-
-    ds['X'] = ds['X'] * 1000
-    ds['Y'] = ds['Y'] * 1000
-
-    return ds
+    xds = xr.open_dataset(filename, **kwargs)
+    xds = _reorganise_to_standard_cf(xds)
+    crs = create_crs(xds)
+    return _to_rio(xds, crs)
 
 
 
@@ -162,6 +75,8 @@ def open_mfxr(files, dim='TIME', transform_func=None):
 
     """
 
+    raise NotImplementedError
+
     def process_one_path(path):        
         ds = open_xr(path,chunks={'TIME':366})
         # transform_func should do some sort of selection or
@@ -179,47 +94,68 @@ def open_mfxr(files, dim='TIME', transform_func=None):
 
 
 
-def get_extent(ds):
-    """ Return extent of xarray dataset [xmin,xmax,ymin,ymax] (corners) 
+################################################################################
+# Geo-referencing and CF conventions.
 
-    :param ds: Data from which to determine extent
-    :type ds: xr.DataArray or xr.Dataset
+def create_crs(xds):
+    """ Create a Coordinate Reference System object for the dataset. """
+    return CRS.from_proj4(create_proj4(xds))
 
-    :return: (Xmin, Xmax, Ymin, Ymax)
+
+
+def _xy_dims_to_standard_cf(xds):
+    """ Coerce the X and Y dimensions into CF standard (and into metres). """
+    X_dim = Y_dim = None
+    for coord in xds.coords:
+        if X_dim is None:
+            X_dim = re.match('X[0-9]*_[0-9]*', coord)
+        if Y_dim is None:
+            Y_dim = re.match('Y[0-9]*_[0-9]*', coord)
+
+        if (X_dim is not None) and (Y_dim is not None):
+            break
+    
+    if X_dim is None:
+        raise ValueError('No X dimension identified from dataset.')
+    if Y_dim is None:
+        raise ValueError('No Y dimension identified from dataset.')
+
+    xds = xds.rename({X_dim.string:'x'})
+    xds = xds.rename({Y_dim.string:'y'})
+
+    xds['x'] = xds['x'] * 1000
+    xds['y'] = xds['y'] * 1000
+
+    return xds
+
+
+
+def _reorganise_to_standard_cf(xds):
+    """ Reorganise dimensions, attributes into standard netCDF names. """
+    xds = _xy_dims_to_standard_cf(xds)
+    xds = xds.rename({'TIME':'time'})
+
+    return xds
+
+
+
+def _to_rio(xds, cc):
+    """ Apply CRS to Dataset through rioxarray functionality. """
+    return xds.rio.write_crs(cc.to_string(), inplace=True)
+
+
+
+def get_mpl_extent(xds):
+    """ Return an extent tuple in the format required by matplotlib. 
+
+    :param xds: a MAR XDataset opened through MAR.open().
+    :dtype xds: xr.Dataset
+    :returns: (xmin,xmax,ymin,ymax)
     :rtype: tuple
-
     """
-    xmin = float(ds.X.min())
-    xmax = float(ds.X.max())
-    ymin = float(ds.Y.min())
-    ymax = float(ds.Y.max())
-
-    # MAR values are grid centres so we need to do adjust to grid corners
-    xsize, ysize = get_pixel_size(ds)
-    xsize2 = xsize / 2
-    ysize2 = ysize / 2
-    xmin -= xsize2
-    ymax -= ysize2
-    xmax += xsize2
-    ymin += ysize2
-
-    return (xmin,xmax,ymin,ymax)
-
-
-
-def get_pixel_size(ds):
-    """ Return pixel dimensions in metres (xpixel, ypixel)
-
-    :param ds: Data from which to determine pixel size
-    :type ds: xr.DataArray or xr.Dataset
-
-    :return: X pixel dimension, Y pixel dimension
-    :rtype: tuple
-
-    """
-    xpx = float(ds.X[1] - ds.X[0])
-    ypx = float(ds.Y[0] - ds.Y[1])
-    return (xpx, ypx)
+    bounds = xds.rio.bounds()
+    extent = (bounds[0], bounds[2], bounds[1], bounds[3])
+    return extent
 
 
 
@@ -241,6 +177,8 @@ def create_mar_res(xarray_obj, grid_info, gdal_dtype, ret_xarray=False, interp_t
     :rtype: GeoRaster.SingleBandRaster, xarray.DataArray
 
     """
+
+    raise NotImplementedError
 
     if interp_type == 'nearest':
         interp_type = gdal.GRA_NearestNeighbour
@@ -288,6 +226,7 @@ def create_annual_mar_res(multi_annual_xarray, MAR_MSK, mar_kws, gdal_dtype, **k
 
      """
 
+    raise NotImplementedError
     years = multi_annual_xarray['TIME.year'].values
     # Set up store for masks at MAR resolution
     store = np.zeros((len(years), MAR_MSK.shape[0], MAR_MSK.shape[1]))
@@ -310,72 +249,38 @@ def create_annual_mar_res(multi_annual_xarray, MAR_MSK, mar_kws, gdal_dtype, **k
 
 
 
-def create_proj4(ds_fn=None, ds=None, proj='stere',
-    base='+k=1 +datum=WGS84 +units=m', return_pyproj=True):
+def create_proj4(xds, proj=MAR_PROJECTION,
+    base=MAR_BASE_PROJ4):
     """ Return proj4 string for dataset.
 
     Create proj4 string using combination of values determined from dataset
     and those which must be known in advance (projection).
 
-    :param ds_fn: filename string of MARdataset
-    :type ds_fn: str
-    :param ds: xarray representation of MAR dataset opened using mar_raster
-    :type ds: xr.Dataset
+    :param xds: xarray representation of MAR dataset opened using mar_raster
+    :type xds: xr.Dataset
     :param proj: Proj.4 projection
     :type proj: str
     :param base: base Proj.4 string for MAR
     :type base: str
-    :param return_pyproj: If True return pyproj.Proj object, otherwise string
-    :type return_pyproj: bool
 
-    :return: Proj.4 string or pyproj.Proj object
-    :rtype: str, pyproj.Proj
+    :return: Proj.4 string object
+    :rtype: str
 
     """
-    
-    if ds is None:
-        ds = open_xr(ds_fn)
 
-    lat_0 = np.round(float(ds.LAT.sel(X=0,Y=0, method='nearest').values), 1)
-    lon_0 = np.round(float(ds.LON.sel(X=0,Y=0, method='nearest').values), 1)
+    lat_0 = np.round(float(xds.LAT.sel(x=0, y=0, method='nearest').values), 1)
+    lon_0 = np.round(float(xds.LON.sel(x=0, y=0, method='nearest').values), 1)
 
     proj4 = '+proj=%s +lon_0=%s +lat_0=%s %s' %(proj, lon_0, lat_0, base)
 
-    if return_pyproj:
-        return pyproj.Proj(proj4)
-    else:
-        return proj4
+    return proj4
 
 
 
-def create_transform(ds_fn=None, ds=None):
-    """ Return GDAL GeoTransform for dataset.
+################################################################################
+# Mask-related.
 
-    :param ds_fn: filename string of MARdataset
-    :type ds_fn: str
-    :param ds: xarray representation of MAR dataset opened using mar_raster
-    :type ds: xr.Dataset
-
-    :return: GeoTransform (top left x, w-e size, 0, top left y, 0, n-s size)
-    :rtype: tuple
-
-    """
-   
-    if ds is None:
-        ds = open_xr(ds_fn)
-
-    # geotransform suitable for GDAL (i.e. cell corner not centre)
-    # [xmin,xmax,ymin,ymax]
-    extent = get_extent(ds)
-    xsize, ysize = get_pixel_size(ds)
-    # (top left x, w-e cell size, 0, top left y, 0, n-s cell size (-ve))
-    trans = (extent[0], xsize, 0, extent[3], 0, ysize)
-
-    return trans
-
-
-
-def gris_mask(ds_fn=None, ds=None):
+def mask_for_gris(ds_fn=None, ds=None):
     """ Return xarray representation of GrIS mask processed according to 
     Xavier Fettweis' method (see email XF-->AT 5 April 2018)
 
@@ -398,6 +303,8 @@ def gris_mask(ds_fn=None, ds=None):
 
     """
 
+    raise NotImplementedError
+
     if ds is None:
         ds = open_xr(ds_fn)
 
@@ -415,6 +322,9 @@ def gris_mask(ds_fn=None, ds=None):
 
 
 
+################################################################################
+# Sub-daily-outputs related.
+
 def get_Xhourly_start_end(Xhourly_da):
     """ Return start and end timestamps of an X-hourly DataArray
 
@@ -429,6 +339,8 @@ def get_Xhourly_start_end(Xhourly_da):
     :rtype: tuple
 
     """
+
+    raise NotImplementedError
 
     hrs_in_da = len(Xhourly_da['ATMXH'])
     if np.mod(24, hrs_in_da) > 0:
@@ -461,6 +373,8 @@ def squeeze_Xhourly(Xhourly_da):
 
     """
 
+    raise NotImplementedError
+
     dt_start, dt_end, freq = get_Xhourly_start_end(Xhourly_da)
 
     index = pd.date_range(start=dt_start, end=dt_end, freq='%sH' %freq)
@@ -489,6 +403,8 @@ def Xhourly_pt_to_series(Xhourly_da):
 
     """
 
+    raise NotImplementedError
+
     dt_start, dt_end, freq = get_Xhourly_start_end(Xhourly_da)
 
     index = pd.date_range(start=dt_start, end=dt_end, freq='%sH' %freq)
@@ -498,16 +414,3 @@ def Xhourly_pt_to_series(Xhourly_da):
     return series
    
 
-
-
-
-# This function does not fill well in this module but is retained commented-out
-# for reference
-# def cartopy_proj(grid):
-#     """ Return Cartopy CRS for specified MAR grid """
-
-#     p = spatial_ref(grid)
-#     crs = cartopy.crs.Stereographic(central_latitude=p.GetProjParm('latitude_of_origin'),
-#         central_longitude=p.GetProjParm('central_meridian'))
-
-#     return crs
