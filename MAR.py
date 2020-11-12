@@ -1,33 +1,23 @@
-# -*- coding: utf-8 -*-
 """
-Load MAR NetCDF grids into into xarray or a GeoRaster instance.
+Helper functions for MAR Regional Climate model outputs, centred around 
+rioxarray (corteva.github.io/rioxarray) and xarray (xarray.pydata.org).
 
-Needed because the NetCDF grids which MAR outputs are not geo-referenced in 
-any of the several ways that GDAL understands.
-
-@author Andrew Tedstone (a.j.tedstone@bristol.ac.uk)
-@date March 2016
+@author Andrew Tedstone (andrew.tedstone@unifr.ch)
+@date March 2016, November 2020.
 
 """
 
-from osgeo import osr, gdal
+
 import os
 import numpy as np
-try:
-    import pyproj
-except ImportError:
-    import mpl_toolkits.basemap.pyproj as pyproj
-import xarray as xr
-import cartopy.crs
 from glob import glob
 import re
-import pandas as pd
 import datetime as dt
 
-try:
-    import georaster
-except ImportError:
-    gr_avail = False
+import xarray as xr
+import pandas as pd
+from rasterio.crs import CRS
+
 
 ###
 # MAR Grid Definitions 
@@ -54,10 +44,6 @@ are not quite the same as those in the LAT and LON MAR grids. Perhaps the MAR
 grids are cell centres? -- doesn't seem to be the case, I tried adding on
 12.5km and the lat/lons still didn't match precisely.
 """
-
-# GDAL won't load datasets unless bottomup set to no
-# as a result we need to flip the rasters once they are read in.
-os.environ['GDAL_NETCDF_BOTTOMUP'] = 'NO'
 
 
 def load(filename, grid):
@@ -237,7 +223,7 @@ def get_pixel_size(ds):
 
 
 
-def create_mar_res(xarray_obj, grid_info, gdal_dtype, ret_xarray=False, interp_type=gdal.GRA_NearestNeighbour):
+def create_mar_res(xarray_obj, grid_info, gdal_dtype, ret_xarray=False, interp_type='nearest'):
     """ Resample other res raster to dimensions and resolution of MAR grid
 
     :param xarray_obj: A 2-D DataArray to resample with dimensions Y and X
@@ -255,6 +241,9 @@ def create_mar_res(xarray_obj, grid_info, gdal_dtype, ret_xarray=False, interp_t
     :rtype: GeoRaster.SingleBandRaster, xarray.DataArray
 
     """
+
+    if interp_type == 'nearest':
+        interp_type = gdal.GRA_NearestNeighbour
 
     if gr_avail == False:
         print('GeoRaster dependency not available.')
