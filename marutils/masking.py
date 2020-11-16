@@ -11,14 +11,15 @@ def gris_mask(xds):
     This method returns a mask of the GrIS processed according to 
     Xavier Fettweis' method (as per email XF-->AT 5 April 2018)
 
-    Ferret method:
-    yes? LET msk_tmp1            = if ( lat[d=1]  GE 75   AND lon[d=1] LE -75 ) then  0           else 1
-    yes? LET msk_tmp2a           = if ( lat[d=1]  GE 79.5 AND lon[d=1] LE -67 ) then  0           else msk_tmp1
-    yes? LET msk_tmp2            = if ( lat[d=1]  GE 81.2 AND lon[d=1] LE -63 ) then  0           else msk_tmp2a
-    yes? let km3 = 15*15/(1000*1000)
-    yes? LET msk2 = IF ( msk[d=1]  ge 50 ) then (1*msk_tmp2)*msk/100 else 0
-    yes? let RUsum=RU*msk2*km3
-    yes? list RUsum[k=1,x=@sum,y=@sum,l=@sum] 
+    Ferret method::
+    
+        yes? LET msk_tmp1            = if ( lat[d=1]  GE 75   AND lon[d=1] LE -75 ) then  0           else 1
+        yes? LET msk_tmp2a           = if ( lat[d=1]  GE 79.5 AND lon[d=1] LE -67 ) then  0           else msk_tmp1
+        yes? LET msk_tmp2            = if ( lat[d=1]  GE 81.2 AND lon[d=1] LE -63 ) then  0           else msk_tmp2a
+        yes? let km3 = 15*15/(1000*1000)
+        yes? LET msk2 = IF ( msk[d=1]  ge 50 ) then (1*msk_tmp2)*msk/100 else 0
+        yes? let RUsum=RU*msk2*km3
+        yes? list RUsum[k=1,x=@sum,y=@sum,l=@sum] 
 
     :param xds: filename of MARdataset, or an opened xarray representation
     :type ds_fn: str or xr.Dataset

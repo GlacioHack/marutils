@@ -1,10 +1,3 @@
-# from .marutils import (open_dataset,
-# 	mask_for_gris,
-# 	Xhourly_to_time,
-# 	create_proj4,
-# 	get_mpl_extent,
-# 	create_crs)
-
 from marutils.io import open_dataset
 
 try:

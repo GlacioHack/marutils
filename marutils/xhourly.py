@@ -38,14 +38,21 @@ def _get_Xhourly_start_end(Xhourly_da):
     return (dt_start, dt_end, freq)
 
 
-def Xhourly_to_time(Xhourly_da):
+def xhourly_to_time(xda):
     """ 
-    Squeeze X-hourly dimension out of variable, yielding hourly time dimension.
+    Squeeze X-hourly dimension out of a variable, yielding hourly time dimension.
 
     Used for DataArrays with coordinates (y, x, ATMXH, time).
 
-    :param Xhourly_da: an X-hourly DataArray containing ATMXH coordinate
-    :type Xhourly_da: xr.DataArray
+    Example::
+
+        import marutils
+        from marutils import xhourly
+        mar = marutils.open_dataset('MAR.data.nc')
+        hourly_tt = xhourly.xhourly_to_time(mar.TTH)
+
+    :param xda: a DataArray of MAR data containing ATMXH coordinate
+    :type xda: xr.DataArray
 
     :return: DataArray with ATMXH dimension removed and hours on the time dimension.
     :rtype: xr.DataArray

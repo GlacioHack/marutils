@@ -1,27 +1,14 @@
-"""
-Helper functions for MAR Regional Climate model outputs, centred around 
-rioxarray (corteva.github.io/rioxarray) and xarray (xarray.pydata.org).
-
-@author Andrew Tedstone (andrew.tedstone@unifr.ch)
-@date March 2016, November 2020.
-
-:meta private:
-"""
+""" Read MAR outputs into xarray. """
 
 import os
 import numpy as np
 from glob import glob
 import re
-import datetime as dt
 
 import xarray as xr
 import rioxarray
-import pandas as pd
-from rasterio.crs import CRS
 
-MAR_PROJECTION = 'stere'
-MAR_BASE_PROJ4 = '+k=1 +datum=WGS84 +units=m'
-
+from marutils.georef import MAR_PROJECTION, MAR_BASE_PROJ4, create_crs
 
 def _open_dataset(filename, projection, base_proj4, chunks=None, **kwargs):
     """
@@ -105,14 +92,6 @@ def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'tim
     return combined
 
 
-################################################################################
-# Geo-referencing and CF conventions.
-
-def create_crs(xds, projection=MAR_PROJECTION, base_proj4=MAR_BASE_PROJ4):
-    """ Create a Coordinate Reference System object for the dataset. """
-    return CRS.from_proj4(create_proj4(xds, projection, base_proj4))
-
-
 def _xy_dims_to_standard_cf(xds):
     """ Coerce the X and Y dimensions into CF standard (and into metres). """
     X_dim = Y_dim = None
@@ -152,139 +131,3 @@ def _to_rio(xds, cc):
     return xds.rio.write_crs(cc.to_string(), inplace=True)
 
 
-def get_mpl_extent(xds):
-    """ Return an extent tuple in the format required by matplotlib. 
-
-    :param xds: a MAR XDataset opened through MAR.open().
-    :type xds: xr.Dataset
-    :returns: (xmin,xmax,ymin,ymax)
-    :rtype: tuple
-    """
-    bounds = xds.rio.bounds()
-    extent = (bounds[0], bounds[2], bounds[1], bounds[3])
-    return extent
-
-
-def create_proj4(xds, proj, base):
-    """ Return proj4 string for dataset.
-
-    Create proj4 string using combination of values determined from dataset
-    and those which must be known in advance (projection).
-
-    :param xds: xarray representation of MAR dataset opened using mar_raster
-    :type xds: xr.Dataset
-    :param proj: Proj.4 projection
-    :type proj: str
-    :param base: base Proj.4 string for MAR
-    :type base: str
-
-    :return: Proj.4 string object
-    :rtype: str
-
-    """
-
-    lat_0 = np.round(float(xds.LAT.sel(x=0, y=0, method='nearest').values), 1)
-    lon_0 = np.round(float(xds.LON.sel(x=0, y=0, method='nearest').values), 1)
-
-    proj4 = '+proj=%s +lon_0=%s +lat_0=%s %s' % (proj, lon_0, lat_0, base)
-
-    return proj4
-
-
-################################################################################
-# Mask-related.
-
-def mask_for_gris(xds):
-    """ Return xarray representation of GrIS mask processed according to 
-    Xavier Fettweis' method (see email XF-->AT 5 April 2018)
-
-    Ferret method:
-    yes? LET msk_tmp1            = if ( lat[d=1]  GE 75   AND lon[d=1] LE -75 ) then  0           else 1
-    yes? LET msk_tmp2a           = if ( lat[d=1]  GE 79.5 AND lon[d=1] LE -67 ) then  0           else msk_tmp1
-    yes? LET msk_tmp2            = if ( lat[d=1]  GE 81.2 AND lon[d=1] LE -63 ) then  0           else msk_tmp2a
-    yes? let km3 = 15*15/(1000*1000)
-    yes? LET msk2 = IF ( msk[d=1]  ge 50 ) then (1*msk_tmp2)*msk/100 else 0
-    yes? let RUsum=RU*msk2*km3
-    yes? list RUsum[k=1,x=@sum,y=@sum,l=@sum] 
-
-    :param xds: filename of MARdataset, or an opened xarray representation
-    :type ds_fn: str or xr.Dataset
-
-    :return: MAR mask with XF GrIS-specific post-processing applied
-    :rtype: xr.DataArray
-
-    """
-
-    if isinstance(xds, str):
-        xds = _open_dataset(xds)
-
-    blank = xr.DataArray(np.zeros((len(xds.y), len(xds.x))), dims=['y', 'x'],
-                         coorxds={'y': xds.y, 'x': xds.x})
-    msk_tmp1 = blank.where((xds.LAT >= 75) & (xds.LON <= -75), other=1)
-    msk_tmp2a = blank.where((xds.LAT >= 79.5) & (xds.LON <= -67), other=msk_tmp1)
-    msk_tmp2 = blank.where((xds.LAT >= 81.2) & (xds.LON <= -63), other=msk_tmp2a)
-
-    #msk2 = (xds.MSK.where(xds.MSK >= 50) * msk_tmp2) / 100
-    msk_here = xds.MSK.where(xds.MSK >= 50, other=0)
-    msk2 = (1*msk_tmp2) * msk_here/100
-
-    return msk2
-
-
-################################################################################
-# Sub-daily-outputs related.
-
-def _get_Xhourly_start_end(Xhourly_da):
-    """ Return start and end timestamps of an X-hourly DataArray
-
-    Used for DataArrays containing TIME and ATMXH coordinates.
-
-    Assumes data are HOURLY, sub-hourly data are not catered for.
-
-    :param Xhourly_da: an X-hourly DataArray
-    :type Xhourly_da: xr.DataArray
-
-    :return: start (0), end (1) timestamps in datetime.datetime type, freq (3)
-    :rtype: tuple
-
-    """
-
-    hrs_in_da = len(Xhourly_da['ATMXH'])
-    if np.mod(24, hrs_in_da) > 0:
-        raise NotImplementedError
-
-    freq = 24 / hrs_in_da
-
-    dt_start = pd.to_datetime(Xhourly_da.time.isel(time=0).values)
-    dt_start = dt_start - dt.timedelta(hours=(dt_start.hour-freq))
-
-    dt_end = pd.to_datetime(Xhourly_da.time.isel(time=-1).values)
-    dt_end = dt_end - dt.timedelta(hours=dt_end.hour)
-    dt_end = dt_end + dt.timedelta(hours=24)
-
-    return (dt_start, dt_end, freq)
-
-
-def Xhourly_to_time(Xhourly_da):
-    """ 
-    Squeeze X-hourly dimension out of variable, yielding hourly time dimension.
-
-    Used for DataArrays with coordinates (y, x, ATMXH, time).
-
-    :param Xhourly_da: an X-hourly DataArray containing ATMXH coordinate
-    :type Xhourly_da: xr.DataArray
-
-    :return: DataArray with ATMXH dimension removed and hours on the time dimension.
-    :rtype: xr.DataArray
-
-    """
-
-    dt_start, dt_end, freq = _get_Xhourly_start_end(Xhourly_da)
-
-    index = pd.date_range(start=dt_start, end=dt_end, freq='%sH' % freq)
-
-    hourly_da = Xhourly_da.stack(TIME_H=('ATMXH', 'time'))
-    hourly_da['TIME_H'] = index
-    hourly_da = hourly_da.rename({'TIME_H': 'time'})
-
-    return hourly_da
