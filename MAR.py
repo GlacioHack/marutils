@@ -2,6 +2,10 @@
 Helper functions for MAR Regional Climate model outputs, centred around 
 rioxarray (corteva.github.io/rioxarray) and xarray (xarray.pydata.org).
 
+Main usage:
+
+    mar_timeseries = mar_tools.open_dataset('ICE.*.nc')
+
 @author Andrew Tedstone (andrew.tedstone@unifr.ch)
 @date March 2016, November 2020.
 
@@ -23,8 +27,7 @@ MAR_PROJECTION = 'stere'
 MAR_BASE_PROJ4 = '+k=1 +datum=WGS84 +units=m'
 
 
-
-def _open(filename, chunks=None, **kwargs):
+def _open_dataset(filename, projection, base_proj4, chunks=None, **kwargs):
     """
     Load MAR NetCDF, setting X and Y coordinate names to X_name and Y_name,
     and multiplying by 1000 to convert coordinates to metres.
@@ -47,14 +50,13 @@ def _open(filename, chunks=None, **kwargs):
     # Apply chunking after dimensions have been renamed to standard names.
     if chunks is not None:
         xds = xds.chunk(chunks=chunks)
-    crs = create_crs(xds)
+    crs = create_crs(xds, projection, base_proj4)
     return _to_rio(xds, crs)
 
 
-
-def open(filenames, concat_dim='time', transform_func=None,
-    chunks={'time':366}, **kwargs):
-    """ Load single or multiple MAR NC files concatenated on time axis into xr.Dataset.
+def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'time':366},
+    projection=MAR_PROJECTION, base_proj4=MAR_BASE_PROJ4, **kwargs):
+    """ Load single or multiple MAR NC files into a xr.Dataset.
 
     # you might also use indexing operations like .sel to subset datasets
     comb = open_multiple('MAR*.nc', dim='TIME',
@@ -63,12 +65,27 @@ def open(filenames, concat_dim='time', transform_func=None,
     Based on http://xray.readthedocs.io/en/v0.7.1/io.html#combining-multiple-files
     See also http://xray.readthedocs.io/en/v0.7.1/dask.html
 
-    :param files: filesystem path to open, with wildcard expression (*)
+    If multiple files are specified then they will be concatenated on the time axis.
+
+    The following changes are applied to the dimensions to improve usability and 
+    script portability between different MAR model runs:
+        'X{n}_{n}'  --> x
+        'Y{n}_{n}'  --> y
+        'TIME'      --> 'time'
+        x & y km    --> metres
+
+    :param files: filesystem path to open, optionally with wildcard expression (*)
     :type files: str
-    :param dim: name of dimension on which concatenate
-    :type dim: str
+    :param dim: name of dimension on which concatenate (only if multiple files specified)
+    :type dim: str or None
     :param transform_func: a function to use to reduce/aggregate data
     :type transform_func: function
+    :param chunks: A dictionary specifying how to chunk the Dataset. Use dimension names `time`, `y`, `x`.
+    :type chunks: dict or None
+    :param projection: The proj.4 name of the projection of the MAR file/grid.
+    :type projection: str
+    :param base_proj4: The basic proj.4 parameters needed to georeference the file.
+    :type base_proj4: str
 
     :return: concatenated dataset
     :rtype: xr.Dataset
@@ -76,7 +93,7 @@ def open(filenames, concat_dim='time', transform_func=None,
     """
 
     def process_one_path(path):        
-        ds = open_xr(path, chunks=chunks, **kwargs)
+        ds = _open_dataset(path, projection, base_proj4, chunks=chunks, **kwargs)
         # transform_func should do some sort of selection or
         # aggregation
         if transform_func is not None:
@@ -85,9 +102,9 @@ def open(filenames, concat_dim='time', transform_func=None,
         # use it after closing each original file
         return ds
 
-    paths = sorted(glob(files))
+    paths = sorted(glob(filenames))
     datasets = [process_one_path(p) for p in paths]
-    combined = xr.concat(datasets, dim)
+    combined = xr.concat(datasets, concat_dim)
     return combined
 
 
@@ -95,9 +112,9 @@ def open(filenames, concat_dim='time', transform_func=None,
 ################################################################################
 # Geo-referencing and CF conventions.
 
-def create_crs(xds):
+def create_crs(xds, projection=MAR_PROJECTION, base_proj4=MAR_BASE_PROJ4):
     """ Create a Coordinate Reference System object for the dataset. """
-    return CRS.from_proj4(create_proj4(xds))
+    return CRS.from_proj4(create_proj4(xds, projection, base_proj4))
 
 
 def _xy_dims_to_standard_cf(xds):
@@ -143,7 +160,7 @@ def get_mpl_extent(xds):
     """ Return an extent tuple in the format required by matplotlib. 
 
     :param xds: a MAR XDataset opened through MAR.open().
-    :dtype xds: xr.Dataset
+    :type xds: xr.Dataset
     :returns: (xmin,xmax,ymin,ymax)
     :rtype: tuple
     """
@@ -152,95 +169,7 @@ def get_mpl_extent(xds):
     return extent
 
 
-def create_mar_res(xarray_obj, grid_info, gdal_dtype, ret_xarray=False, interp_type='nearest'):
-    """ Resample other res raster to dimensions and resolution of MAR grid
-
-    :param xarray_obj: A 2-D DataArray to resample with dimensions Y and X
-    :type xarray_obj: xarray.DataArray
-    :param grid_info: dict containing key-value pairs for nx, ny, xmin, ymax, xres, yres
-    :type grid_info: dict
-    :param gdal_dtype
-    :type gdal_dtype: int
-    :param ret_xarray: if True, return xarray DataArray, if False return GeoRaster
-    :type ret_xarray: bool
-    :param interp_type: a GDAL interpolation type
-    :type interp_type: int
-    
-    :returns: mask at MAR resolution
-    :rtype: GeoRaster.SingleBandRaster, xarray.DataArray
-
-    """
-
-    raise NotImplementedError
-
-    if interp_type == 'nearest':
-        interp_type = gdal.GRA_NearestNeighbour
-
-    if gr_avail == False:
-        print('GeoRaster dependency not available.')
-        raise ImportError
-
-    # Convert to numpy array and squeeze the extra dimension away
-    as_array = xarray_obj.values.squeeze()
-    if gdal_dtype == gdal.GDT_Byte:
-        as_array = np.where(((np.isnan(as_array)) | (as_array == 0)),0,1)
-
-    source_trans = (xarray_obj.X.values[0], xarray_obj.X.diff(dim='X').values[0], 0,
-                    xarray_obj.Y.values[-1], 0, xarray_obj.Y.diff(dim='Y').values[0] * -1 )
-    source_mask = georaster.SingleBandRaster.from_array(as_array, source_trans, 
-        grids['25km']['spatial_ref'],gdal_dtype=gdal_dtype)
-    # Reproject
-    mask_7km = source_mask.reproject(source_mask.srs, 
-                    grid_info['nx'], grid_info['ny'],
-                    grid_info['xmin'], grid_info['ymax'],
-                    grid_info['xres'], grid_info['yres'],
-                    dtype=gdal_dtype,
-                    interp_type=interp_type, nodata=0)
-
-    if ret_xarray:
-        cx, cy = mask_7km.coordinates(latlon=True)
-        coords = {'Y': cy[:,0], 'X': cx[0,:]}
-        da = xr.DataArray(mask_7km.r, dims=['Y', 'X'], coords=coords)
-        return da
-    else:
-        return mask_7km
-
-
-def create_annual_mar_res(multi_annual_xarray, MAR_MSK, mar_kws, gdal_dtype, **kwargs):
-    """ Create a DataArray of masks, with TIME dimension 
-    
-    :param multi_annual_xarray: xarray with TIME, Y, X dimensions - TIME is annual
-    :type multi_annual_xarray: xarray.DataArray
-    :param MAR_MSK: 
-    :type MAR_MSK:
-    :param gdal_dtype: a GDAL data type
-    :type gdal_dtype: int
-
-     """
-
-    raise NotImplementedError
-    years = multi_annual_xarray['TIME.year'].values
-    # Set up store for masks at MAR resolution
-    store = np.zeros((len(years), MAR_MSK.shape[0], MAR_MSK.shape[1]))
-    n = 0
-    for year in years:
-
-        # Convert to MAR resolution
-        mar_mask = create_mar_res(multi_annual_xarray.sel(TIME=str(year)), mar_kws, gdal_dtype, **kwargs)
-
-        # Save - discard georaster information as we're putting into multi-year
-        # DataArray instead.
-        store[n, :, :] = mar_mask.r
-        n += 1
-
-    # Convert to multi-annual DataArray
-    masks = xr.DataArray(store, 
-        coords=[multi_annual_xarray.TIME, MAR_MSK.Y, MAR_MSK.X], 
-        dims=['TIME', 'Y', 'X'])
-    return masks
-
-
-def create_proj4(xds, proj=MAR_PROJECTION, base=MAR_BASE_PROJ4):
+def create_proj4(xds, proj, base):
     """ Return proj4 string for dataset.
 
     Create proj4 string using combination of values determined from dataset
@@ -293,8 +222,6 @@ def mask_for_gris(ds_fn=None, ds=None):
 
     """
 
-    raise NotImplementedError
-
     if ds is None:
         ds = open_xr(ds_fn)
 
@@ -315,7 +242,7 @@ def mask_for_gris(ds_fn=None, ds=None):
 ################################################################################
 # Sub-daily-outputs related.
 
-def get_Xhourly_start_end(Xhourly_da):
+def _get_Xhourly_start_end(Xhourly_da):
     """ Return start and end timestamps of an X-hourly DataArray
 
     Used for DataArrays containing TIME and ATMXH coordinates.
@@ -330,77 +257,42 @@ def get_Xhourly_start_end(Xhourly_da):
 
     """
 
-    raise NotImplementedError
-
     hrs_in_da = len(Xhourly_da['ATMXH'])
     if np.mod(24, hrs_in_da) > 0:
         raise NotImplementedError
     
     freq = 24 / hrs_in_da
     
-    dt_start = pd.to_datetime(Xhourly_da.TIME.isel(TIME=0).values)
+    dt_start = pd.to_datetime(Xhourly_da.time.isel(time=0).values)
     dt_start = dt_start - dt.timedelta(hours=(dt_start.hour-freq))
 
-    dt_end = pd.to_datetime(Xhourly_da.TIME.isel(TIME=-1).values)
+    dt_end = pd.to_datetime(Xhourly_da.time.isel(time=-1).values)
     dt_end = dt_end - dt.timedelta(hours=dt_end.hour)
     dt_end = dt_end + dt.timedelta(hours=24)
 
     return (dt_start, dt_end, freq)
 
 
-
-def squeeze_Xhourly(Xhourly_da):
+def Xhourly_to_time(Xhourly_da):
     """ 
-    Squeeze X-hourly dimension out of variable, yielding hourly TIME dimension.
+    Squeeze X-hourly dimension out of variable, yielding hourly time dimension.
 
-    Used for DataArrays with coordinates (Y, X, ATMXH, TIME).
+    Used for DataArrays with coordinates (y, x, ATMXH, time).
 
     :param Xhourly_da: an X-hourly DataArray containing ATMXH coordinate
     :type Xhourly_da: xr.DataArray
 
-    :return: DataArray with ATMXH dimension removed and hours on the TIME dimension.
+    :return: DataArray with ATMXH dimension removed and hours on the time dimension.
     :rtype: xr.DataArray
 
     """
 
-    raise NotImplementedError
-
-    dt_start, dt_end, freq = get_Xhourly_start_end(Xhourly_da)
+    dt_start, dt_end, freq = _get_Xhourly_start_end(Xhourly_da)
 
     index = pd.date_range(start=dt_start, end=dt_end, freq='%sH' %freq)
 
-    hourly_da = Xhourly_da.stack(TIME_H=('ATMXH', 'TIME'))
+    hourly_da = Xhourly_da.stack(TIME_H=('ATMXH', 'time'))
     hourly_da['TIME_H'] = index
-    hourly_da = hourly_da.rename({'TIME_H':'TIME'})
+    hourly_da = hourly_da.rename({'TIME_H':'time'})
 
     return hourly_da
-
-
-
-def Xhourly_pt_to_series(Xhourly_da):
-    """
-    Generate pd.Series of data from a point with an X-hourly dimension.
-
-    Used for a DataArray with coordinates (Y=1, X=1, ATMXH, TIME).
-    
-    Assumes data are HOURLY, sub-hourly data are not catered for.
-
-    :param Xhourly_da: an X-hourly DataArray containing ATMXH coordinate
-    :type Xhourly_da: xr.DataArray
-
-    :return: DataArray with ATMXH dimension removed and hours on the TIME dimension.
-    :rtype: xr.DataArray
-
-    """
-
-    raise NotImplementedError
-
-    dt_start, dt_end, freq = get_Xhourly_start_end(Xhourly_da)
-
-    index = pd.date_range(start=dt_start, end=dt_end, freq='%sH' %freq)
-    series = Xhourly_da.to_pandas().stack()
-    series.index = index
-
-    return series
-   
-
