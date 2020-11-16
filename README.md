@@ -2,11 +2,12 @@
 
 This package contains utilities/tools that make it easier to open MAR RCM outputs.
 
-* Load outputs straight into an xarray Dataset with well-named dimensions `(time, y, x)`.
+* Load outputs straight into an xarray Dataset with standard dimensions names `(time, y, x)`.
 * Provide a path with a wildcard expression (`*`) to automatically load several years of MAR files at once, concatenating them along the time axis.
-* Plays nicely with Dask - chunking options are automatically sensible (but can be changed if need be).
+* Plays nicely with Dask - chunking options default to 365-366 days (but can be changed at will).
 * Loaded Datasets are automatically "geo-aware" using the rioxarray `.rio` accessor - no more trying to work out MAR's geo-referencing manually!
 * Helper functions for turning X-hourly variables into continuous time series.
+* Helper functions for masking.
 
 
 ## QuickStart
@@ -48,7 +49,7 @@ Soon to be available via pyPI.
 To return an X-hourly variable with a single, continuous hourly time variable:
 
 ```python
-hourly_air_temperature = marutils.Xhourly_to_time(mar_outputs.TTH)
+hourly_air_temperatures = marutils.xhourly.Xhourly_to_time(mar_outputs.TTH)
 ```
 
 ## Useful notes
