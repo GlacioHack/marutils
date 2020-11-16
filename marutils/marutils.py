@@ -4,6 +4,8 @@ rioxarray (corteva.github.io/rioxarray) and xarray (xarray.pydata.org).
 
 @author Andrew Tedstone (andrew.tedstone@unifr.ch)
 @date March 2016, November 2020.
+
+:meta private:
 """
 
 import os
@@ -52,21 +54,21 @@ def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'tim
                  projection=MAR_PROJECTION, base_proj4=MAR_BASE_PROJ4, **kwargs):
     """ Load single or multiple MAR NC files into a xr.Dataset.
 
-    # you might also use indexing operations like .sel to subset datasets
-    comb = open_multiple('MAR*.nc', dim='TIME',
-                 transform_func=lambda ds: ds.AL)
-
-    Based on http://xray.readthedocs.io/en/v0.7.1/io.html#combining-multiple-files
-    See also http://xray.readthedocs.io/en/v0.7.1/dask.html
-
     If multiple files are specified then they will be concatenated on the time axis.
 
     The following changes are applied to the dimensions to improve usability and 
     script portability between different MAR model runs:
-        'X{n}_{n}'  --> x
-        'Y{n}_{n}'  --> y
-        'TIME'      --> 'time'
-        x & y km    --> metres
+    * 'X{n}_{n}'  --> x
+    * 'Y{n}_{n}'  --> y
+    * 'TIME'      --> 'time'
+    * x & y km    --> metres
+
+    You might also use indexing operations like .sel to subset datasets::
+    
+        mymar = open_dataset('MAR*.nc', dim='time', transform_func=lambda ds: ds.AL.sel(x=slice(.., ..)))
+
+    Functionality based on http://xray.readthedocs.io/en/v0.7.1/io.html#combining-multiple-files
+    See also http://xray.readthedocs.io/en/v0.7.1/dask.html
 
     :param files: filesystem path to open, optionally with wildcard expression (*)
     :type files: str
