@@ -2,15 +2,9 @@
 Helper functions for MAR Regional Climate model outputs, centred around 
 rioxarray (corteva.github.io/rioxarray) and xarray (xarray.pydata.org).
 
-Main usage:
-
-    mar_timeseries = mar_tools.open_dataset('ICE.*.nc')
-
 @author Andrew Tedstone (andrew.tedstone@unifr.ch)
 @date March 2016, November 2020.
-
 """
-
 
 import os
 import numpy as np
@@ -219,7 +213,7 @@ def mask_for_gris(xds):
 
     """
 
-    if isinstance(xds, str) 
+    if isinstance(xds, str):
         xds = _open_dataset(xds)
 
     blank = xr.DataArray(np.zeros((len(xds.y), len(xds.x))), dims=['y', 'x'],
