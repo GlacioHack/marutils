@@ -224,8 +224,8 @@ def mask_for_gris(ds_fn=None, ds=None):
     if ds is None:
         ds = open_xr(ds_fn)
 
-    blank = xr.DataArray(np.zeros((len(ds.Y), len(ds.X))), dims=['Y', 'X'],
-                         coords={'Y': ds.Y, 'X': ds.X})
+    blank = xr.DataArray(np.zeros((len(ds.y), len(ds.x))), dims=['y', 'x'],
+                         coords={'y': ds.y, 'x': ds.x})
     msk_tmp1 = blank.where((ds.LAT >= 75) & (ds.LON <= -75), other=1)
     msk_tmp2a = blank.where((ds.LAT >= 79.5) & (ds.LON <= -67), other=msk_tmp1)
     msk_tmp2 = blank.where((ds.LAT >= 81.2) & (ds.LON <= -63), other=msk_tmp2a)
