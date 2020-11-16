@@ -24,7 +24,7 @@ MAR_BASE_PROJ4 = '+k=1 +datum=WGS84 +units=m'
 
 
 
-def open(filename, **kwargs):
+def _open(filename, chunks=None, **kwargs):
     """
     Load MAR NetCDF, setting X and Y coordinate names to X_name and Y_name,
     and multiplying by 1000 to convert coordinates to metres.
@@ -44,20 +44,20 @@ def open(filename, **kwargs):
 
     xds = xr.open_dataset(filename, **kwargs)
     xds = _reorganise_to_standard_cf(xds)
+    # Apply chunking after dimensions have been renamed to standard names.
+    if chunks is not None:
+        xds = xds.chunk(chunks=chunks)
     crs = create_crs(xds)
     return _to_rio(xds, crs)
 
 
 
-def open_mfxr(files, dim='TIME', transform_func=None):
-    """
-    Load multiple MAR files into a single xarray object, performing some
-    aggregation first to make this computationally feasible.
-
-    E.g. select a single datarray to examine. 
+def open(filenames, concat_dim='time', transform_func=None,
+    chunks={'time':366}, **kwargs):
+    """ Load single or multiple MAR NC files concatenated on time axis into xr.Dataset.
 
     # you might also use indexing operations like .sel to subset datasets
-    comb = read_netcdfs('MAR*.nc', dim='TIME',
+    comb = open_multiple('MAR*.nc', dim='TIME',
                  transform_func=lambda ds: ds.AL)
 
     Based on http://xray.readthedocs.io/en/v0.7.1/io.html#combining-multiple-files
@@ -75,10 +75,8 @@ def open_mfxr(files, dim='TIME', transform_func=None):
 
     """
 
-    raise NotImplementedError
-
     def process_one_path(path):        
-        ds = open_xr(path,chunks={'TIME':366})
+        ds = open_xr(path, chunks=chunks, **kwargs)
         # transform_func should do some sort of selection or
         # aggregation
         if transform_func is not None:
@@ -100,7 +98,6 @@ def open_mfxr(files, dim='TIME', transform_func=None):
 def create_crs(xds):
     """ Create a Coordinate Reference System object for the dataset. """
     return CRS.from_proj4(create_proj4(xds))
-
 
 
 def _xy_dims_to_standard_cf(xds):
@@ -129,7 +126,6 @@ def _xy_dims_to_standard_cf(xds):
     return xds
 
 
-
 def _reorganise_to_standard_cf(xds):
     """ Reorganise dimensions, attributes into standard netCDF names. """
     xds = _xy_dims_to_standard_cf(xds)
@@ -138,11 +134,9 @@ def _reorganise_to_standard_cf(xds):
     return xds
 
 
-
 def _to_rio(xds, cc):
     """ Apply CRS to Dataset through rioxarray functionality. """
     return xds.rio.write_crs(cc.to_string(), inplace=True)
-
 
 
 def get_mpl_extent(xds):
@@ -158,7 +152,6 @@ def get_mpl_extent(xds):
     return extent
 
 
-
 def create_mar_res(xarray_obj, grid_info, gdal_dtype, ret_xarray=False, interp_type='nearest'):
     """ Resample other res raster to dimensions and resolution of MAR grid
 
@@ -166,7 +159,7 @@ def create_mar_res(xarray_obj, grid_info, gdal_dtype, ret_xarray=False, interp_t
     :type xarray_obj: xarray.DataArray
     :param grid_info: dict containing key-value pairs for nx, ny, xmin, ymax, xres, yres
     :type grid_info: dict
-    :param gdal_dtype: a GDAL data type
+    :param gdal_dtype
     :type gdal_dtype: int
     :param ret_xarray: if True, return xarray DataArray, if False return GeoRaster
     :type ret_xarray: bool
@@ -213,7 +206,6 @@ def create_mar_res(xarray_obj, grid_info, gdal_dtype, ret_xarray=False, interp_t
         return mask_7km
 
 
-
 def create_annual_mar_res(multi_annual_xarray, MAR_MSK, mar_kws, gdal_dtype, **kwargs):
     """ Create a DataArray of masks, with TIME dimension 
     
@@ -248,9 +240,7 @@ def create_annual_mar_res(multi_annual_xarray, MAR_MSK, mar_kws, gdal_dtype, **k
     return masks
 
 
-
-def create_proj4(xds, proj=MAR_PROJECTION,
-    base=MAR_BASE_PROJ4):
+def create_proj4(xds, proj=MAR_PROJECTION, base=MAR_BASE_PROJ4):
     """ Return proj4 string for dataset.
 
     Create proj4 string using combination of values determined from dataset
