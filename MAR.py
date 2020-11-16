@@ -54,8 +54,8 @@ def _open_dataset(filename, projection, base_proj4, chunks=None, **kwargs):
     return _to_rio(xds, crs)
 
 
-def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'time':366},
-    projection=MAR_PROJECTION, base_proj4=MAR_BASE_PROJ4, **kwargs):
+def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'time': 366},
+                 projection=MAR_PROJECTION, base_proj4=MAR_BASE_PROJ4, **kwargs):
     """ Load single or multiple MAR NC files into a xr.Dataset.
 
     # you might also use indexing operations like .sel to subset datasets
@@ -92,8 +92,9 @@ def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'tim
 
     """
 
-    def process_one_path(path):        
-        ds = _open_dataset(path, projection, base_proj4, chunks=chunks, **kwargs)
+    def process_one_path(path):
+        ds = _open_dataset(path, projection, base_proj4,
+                           chunks=chunks, **kwargs)
         # transform_func should do some sort of selection or
         # aggregation
         if transform_func is not None:
@@ -106,7 +107,6 @@ def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'tim
     datasets = [process_one_path(p) for p in paths]
     combined = xr.concat(datasets, concat_dim)
     return combined
-
 
 
 ################################################################################
@@ -128,14 +128,14 @@ def _xy_dims_to_standard_cf(xds):
 
         if (X_dim is not None) and (Y_dim is not None):
             break
-    
+
     if X_dim is None:
         raise ValueError('No X dimension identified from dataset.')
     if Y_dim is None:
         raise ValueError('No Y dimension identified from dataset.')
 
-    xds = xds.rename({X_dim.string:'x'})
-    xds = xds.rename({Y_dim.string:'y'})
+    xds = xds.rename({X_dim.string: 'x'})
+    xds = xds.rename({Y_dim.string: 'y'})
 
     xds['x'] = xds['x'] * 1000
     xds['y'] = xds['y'] * 1000
@@ -146,7 +146,7 @@ def _xy_dims_to_standard_cf(xds):
 def _reorganise_to_standard_cf(xds):
     """ Reorganise dimensions, attributes into standard netCDF names. """
     xds = _xy_dims_to_standard_cf(xds)
-    xds = xds.rename({'TIME':'time'})
+    xds = xds.rename({'TIME': 'time'})
 
     return xds
 
@@ -190,10 +190,9 @@ def create_proj4(xds, proj, base):
     lat_0 = np.round(float(xds.LAT.sel(x=0, y=0, method='nearest').values), 1)
     lon_0 = np.round(float(xds.LON.sel(x=0, y=0, method='nearest').values), 1)
 
-    proj4 = '+proj=%s +lon_0=%s +lat_0=%s %s' %(proj, lon_0, lat_0, base)
+    proj4 = '+proj=%s +lon_0=%s +lat_0=%s %s' % (proj, lon_0, lat_0, base)
 
     return proj4
-
 
 
 ################################################################################
@@ -225,8 +224,8 @@ def mask_for_gris(ds_fn=None, ds=None):
     if ds is None:
         ds = open_xr(ds_fn)
 
-    blank = xr.DataArray(np.zeros((len(ds.Y),len(ds.X))), dims=['Y','X'], 
-        coords={'Y':ds.Y, 'X':ds.X})
+    blank = xr.DataArray(np.zeros((len(ds.Y), len(ds.X))), dims=['Y', 'X'],
+                         coords={'Y': ds.Y, 'X': ds.X})
     msk_tmp1 = blank.where((ds.LAT >= 75) & (ds.LON <= -75), other=1)
     msk_tmp2a = blank.where((ds.LAT >= 79.5) & (ds.LON <= -67), other=msk_tmp1)
     msk_tmp2 = blank.where((ds.LAT >= 81.2) & (ds.LON <= -63), other=msk_tmp2a)
@@ -236,7 +235,6 @@ def mask_for_gris(ds_fn=None, ds=None):
     msk2 = (1*msk_tmp2) * msk_here/100
 
     return msk2
-
 
 
 ################################################################################
@@ -260,9 +258,9 @@ def _get_Xhourly_start_end(Xhourly_da):
     hrs_in_da = len(Xhourly_da['ATMXH'])
     if np.mod(24, hrs_in_da) > 0:
         raise NotImplementedError
-    
+
     freq = 24 / hrs_in_da
-    
+
     dt_start = pd.to_datetime(Xhourly_da.time.isel(time=0).values)
     dt_start = dt_start - dt.timedelta(hours=(dt_start.hour-freq))
 
@@ -289,10 +287,10 @@ def Xhourly_to_time(Xhourly_da):
 
     dt_start, dt_end, freq = _get_Xhourly_start_end(Xhourly_da)
 
-    index = pd.date_range(start=dt_start, end=dt_end, freq='%sH' %freq)
+    index = pd.date_range(start=dt_start, end=dt_end, freq='%sH' % freq)
 
     hourly_da = Xhourly_da.stack(TIME_H=('ATMXH', 'time'))
     hourly_da['TIME_H'] = index
-    hourly_da = hourly_da.rename({'TIME_H':'time'})
+    hourly_da = hourly_da.rename({'TIME_H': 'time'})
 
     return hourly_da
