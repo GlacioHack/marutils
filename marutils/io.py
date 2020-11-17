@@ -88,7 +88,6 @@ def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'tim
 
     paths = sorted(glob(filenames))
     datasets = [process_one_path(p) for p in paths]
-    print(len(datasets))
     if len(datasets) > 1:
         combined = xr.concat(datasets, concat_dim)
         return combined
