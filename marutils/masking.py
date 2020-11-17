@@ -34,7 +34,7 @@ def gris_mask(xds):
         xds = io._open_dataset(xds)
 
     blank = xr.DataArray(np.zeros((len(xds.y), len(xds.x))), dims=['y', 'x'],
-                         coorxds={'y': xds.y, 'x': xds.x})
+                         coords={'y': xds.y, 'x': xds.x})
     msk_tmp1 = blank.where((xds.LAT >= 75) & (xds.LON <= -75), other=1)
     msk_tmp2a = blank.where((xds.LAT >= 79.5) & (xds.LON <= -67), other=msk_tmp1)
     msk_tmp2 = blank.where((xds.LAT >= 81.2) & (xds.LON <= -63), other=msk_tmp2a)
