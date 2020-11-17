@@ -4,6 +4,7 @@ Functions for returning standardised masks, e.g. of ice areas.
 
 import xarray as xr
 from marutils import io
+import numpy as np
 
 def gris_mask(xds):
     """ Return a Greenland Ice Sheet mask.
