@@ -10,7 +10,8 @@ import rioxarray
 
 from marutils.georef import MAR_PROJECTION, MAR_BASE_PROJ4, create_crs
 
-def _open_dataset(filename, projection, base_proj4, chunks=None, **kwargs):
+def _open_dataset(filename, projection=None, base_proj4=None, chunks=None, 
+    **kwargs):
     """
     Load MAR NetCDF, setting X and Y coordinate names to X_name and Y_name,
     and multiplying by 1000 to convert coordinates to metres.
@@ -31,10 +32,12 @@ def _open_dataset(filename, projection, base_proj4, chunks=None, **kwargs):
     xds = xr.open_dataset(filename, **kwargs)
     xds = _reorganise_to_standard_cf(xds)
     # Apply chunking after dimensions have been renamed to standard names.
+    if base_proj4 is not None and projection is not None:
+        crs = create_crs(xds, projection, base_proj4)
+        xds = _to_rio(xds, crs)
     if chunks is not None:
         xds = xds.chunk(chunks=chunks)
-    crs = create_crs(xds, projection, base_proj4)
-    return _to_rio(xds, crs)
+    return xds
 
 
 def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'time': 366},
@@ -75,9 +78,15 @@ def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'tim
 
     """
 
-    def process_one_path(path):
-        ds = _open_dataset(path, projection, base_proj4,
-                           chunks=chunks, **kwargs)
+    def process_one_path(path, load_geo):
+        if load_geo:
+            ds = _open_dataset(
+                path, projection=projection, base_proj4=base_proj4,
+                chunks=chunks, **kwargs)
+        else:
+            ds = _open_dataset(
+                path, projection=None, base_proj4=None, chunks=chunks, **kwargs)
+            
         # transform_func should do some sort of selection or
         # aggregation
         if transform_func is not None:
@@ -87,7 +96,9 @@ def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'tim
         return ds
 
     paths = sorted(glob(filenames))
-    datasets = [process_one_path(p) for p in paths]
+    load_geo = [False] * len(paths)
+    load_geo[0] = True
+    datasets = [process_one_path(p, load_geo) for p in paths]
     if len(datasets) > 1:
         combined = xr.concat(datasets, concat_dim)
         return combined
