@@ -78,9 +78,13 @@ def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'tim
 
     """
 
-    def process_one_path(path):
-        ds = _open_dataset(path, projection, base_proj4,
-                           chunks=chunks, **kwargs)
+    def process_one_path(path, load_geo):
+        if load_geo is False:
+            here_projection = None
+            here_base_proj4 = None
+        ds = _open_dataset(
+            path, projection=here_projection, base_proj4=here_base_proj4,
+            chunks=chunks, **kwargs)
         # transform_func should do some sort of selection or
         # aggregation
         if transform_func is not None:
@@ -90,7 +94,9 @@ def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'tim
         return ds
 
     paths = sorted(glob(filenames))
-    datasets = [process_one_path(p) for p in paths]
+    load_geo = [False] * len(paths)
+    load_geo[0] = True
+    datasets = [process_one_path(p, load_geo) for p in paths]
     if len(datasets) > 1:
         combined = xr.concat(datasets, concat_dim)
         return combined
