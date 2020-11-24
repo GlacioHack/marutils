@@ -79,16 +79,14 @@ def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'tim
     """
 
     def process_one_path(path, load_geo):
-        if load_geo is False:
-            here_projection = None
-            here_base_proj4 = None
+        if load_geo:
+            ds = _open_dataset(
+                path, projection=projection, base_proj4=base_proj4,
+                chunks=chunks, **kwargs)
         else:
-            here_projection = projection
-            here_base_proj4 = base_proj4
+            ds = _open_dataset(
+                path, projection=None, base_proj4=None, chunks=chunks, **kwargs)
             
-        ds = _open_dataset(
-            path, projection=here_projection, base_proj4=here_base_proj4,
-            chunks=chunks, **kwargs)
         # transform_func should do some sort of selection or
         # aggregation
         if transform_func is not None:
