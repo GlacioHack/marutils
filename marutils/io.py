@@ -10,7 +10,8 @@ import rioxarray
 
 from marutils.georef import MAR_PROJECTION, MAR_BASE_PROJ4, create_crs
 
-def _open_dataset(filename, projection, base_proj4, chunks=None, **kwargs):
+def _open_dataset(filename, projection=None, base_proj4=None, chunks=None, 
+    **kwargs):
     """
     Load MAR NetCDF, setting X and Y coordinate names to X_name and Y_name,
     and multiplying by 1000 to convert coordinates to metres.
@@ -31,10 +32,12 @@ def _open_dataset(filename, projection, base_proj4, chunks=None, **kwargs):
     xds = xr.open_dataset(filename, **kwargs)
     xds = _reorganise_to_standard_cf(xds)
     # Apply chunking after dimensions have been renamed to standard names.
+    if base_proj4 is not None and projection is not None:
+        crs = create_crs(xds, projection, base_proj4)
+        xds = _to_rio(xds, crs)
     if chunks is not None:
         xds = xds.chunk(chunks=chunks)
-    crs = create_crs(xds, projection, base_proj4)
-    return _to_rio(xds, crs)
+    return xds
 
 
 def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'time': 366},
