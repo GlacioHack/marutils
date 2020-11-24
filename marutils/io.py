@@ -82,6 +82,10 @@ def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'tim
         if load_geo is False:
             here_projection = None
             here_base_proj4 = None
+        else:
+            here_projection = projection
+            here_base_proj4 = base_proj4
+            
         ds = _open_dataset(
             path, projection=here_projection, base_proj4=here_base_proj4,
             chunks=chunks, **kwargs)
