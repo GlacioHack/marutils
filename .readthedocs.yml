@@ -17,4 +17,5 @@ conda:
   environment: doc/rtd_environment.yml
 
 python:
-   setup_py_install: true
+  install:
+    - requirements: requirements.txt
