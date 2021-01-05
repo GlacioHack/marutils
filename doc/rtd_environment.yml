@@ -1,9 +1,0 @@
-name: marutils
-dependencies:
-  - python>=3.7
-  - numpy
-  - rasterio
-  - rioxarray
-  - pandas
-channels:
-  - conda-forge
