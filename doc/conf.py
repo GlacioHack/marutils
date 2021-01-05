@@ -20,11 +20,11 @@ sys.path.insert(0, os.path.abspath('../marutils/'))
 # -- Project information -----------------------------------------------------
 
 project = 'MARUtils'
-copyright = '2020, Andrew Tedstone'
-author = 'Andrew Tedstone'
+copyright = '2021 GlacioHack / Andrew Tedstone'
+author = 'GlacioHack, Andrew Tedstone'
 
 # The full version, including alpha/beta/rc tags
-release = '0.2'
+release = '2.0.1rc'
 
 
 # -- General configuration ---------------------------------------------------
