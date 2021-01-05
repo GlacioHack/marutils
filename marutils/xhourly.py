@@ -4,6 +4,7 @@ Functions for working with X-hourly variables.
 
 import pandas as pd
 import datetime as dt
+import numpy as np
 
 HDIM = 'ATMXH'
 

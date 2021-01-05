@@ -15,3 +15,7 @@ formats: []
 
 conda:
   environment: doc/rtd_environment.yml
+
+python:
+  install:
+    - requirements: requirements.txt
