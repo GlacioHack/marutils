@@ -1,13 +1,13 @@
 from setuptools import setup
 from os import path
 
-FULLVERSION = '0.2.0'
+FULLVERSION = '1.0.0'
 VERSION = FULLVERSION
 
 setup(name='marutils',
       version=FULLVERSION,
       description='Utilities and tools for working with MAR regional climate model outputs through xarray',
-      url='https://www.github.com/atedstone/marutils/',
+      url='https://www.github.com/GlacioHack/marutils/',
       author='Andrew Tedstone',
       license='BSD-3',
       packages=['marutils'],
