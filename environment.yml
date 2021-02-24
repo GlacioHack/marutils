@@ -8,6 +8,8 @@ dependencies:
   - rioxarray
   - pandas
   - netcdf4
+  - dask
+  - xarray
 
   # code checks
   - flake8
