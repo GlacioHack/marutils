@@ -11,7 +11,7 @@ import rioxarray
 from marutils.georef import MAR_PROJECTION, MAR_BASE_PROJ4, create_crs
 
 def _open_dataset(filename, projection=None, base_proj4=None, chunks=None, 
-    **kwargs):
+    errors=errors, **kwargs):
     """
     Load MAR NetCDF, setting X and Y coordinate names to X_name and Y_name,
     and multiplying by 1000 to convert coordinates to metres.
@@ -30,7 +30,7 @@ def _open_dataset(filename, projection=None, base_proj4=None, chunks=None,
     """
 
     xds = xr.open_dataset(filename, **kwargs)
-    xds = _reorganise_to_standard_cf(xds)
+    xds = _reorganise_to_standard_cf(xds, errors=errors)
     # Apply chunking after dimensions have been renamed to standard names.
     if base_proj4 is not None and projection is not None:
         crs = create_crs(xds, projection, base_proj4)
@@ -41,7 +41,8 @@ def _open_dataset(filename, projection=None, base_proj4=None, chunks=None,
 
 
 def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'time': 366},
-                 projection=MAR_PROJECTION, base_proj4=MAR_BASE_PROJ4, **kwargs):
+                 projection=MAR_PROJECTION, base_proj4=MAR_BASE_PROJ4,
+                 errors='raise', **kwargs):
     """ Load single or multiple MAR NC files into a xr.Dataset.
 
     If multiple files are specified then they will be concatenated on the time axis.
@@ -72,6 +73,10 @@ def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'tim
     :type projection: str
     :param base_proj4: The basic proj.4 parameters needed to georeference the file.
     :type base_proj4: str
+    :param errors: 'raise' or 'ignore'. If 'raise', errors encountered while trying
+    to rename dataset dimensions to standards will be raised, otherwise they will
+    be ignored.
+    :type errors: str
 
     :return: concatenated dataset
     :rtype: xr.Dataset
@@ -82,10 +87,11 @@ def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'tim
         if load_geo:
             ds = _open_dataset(
                 path, projection=projection, base_proj4=base_proj4,
-                chunks=chunks, **kwargs)
+                chunks=chunks, errors=errors, **kwargs)
         else:
             ds = _open_dataset(
-                path, projection=None, base_proj4=None, chunks=chunks, **kwargs)
+                path, projection=None, base_proj4=None, chunks=chunks, 
+                errors=errors, **kwargs)
             
         # transform_func should do some sort of selection or
         # aggregation
@@ -106,7 +112,7 @@ def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'tim
         return datasets[0]
 
 
-def _xy_dims_to_standard_cf(xds):
+def _xy_dims_to_standard_cf(xds, errors='raise'):
     """ Coerce the X and Y dimensions into CF standard (and into metres). """
     X_dim = Y_dim = None
     for coord in xds.coords:
@@ -119,9 +125,17 @@ def _xy_dims_to_standard_cf(xds):
             break
 
     if X_dim is None:
-        raise ValueError('No X dimension identified from dataset.')
+        try:
+            X_dim = xds['X']
+        except KeyError:
+            if errors == 'raise':
+                raise ValueError('No X dimension identified from dataset.')
     if Y_dim is None:
-        raise ValueError('No Y dimension identified from dataset.')
+        try:
+            Y_dim = xds['Y']
+        except KeyError:
+            if errors == 'raise':
+                raise ValueError('No Y dimension identified from dataset.')
 
     xds = xds.rename({X_dim.string: 'x'})
     xds = xds.rename({Y_dim.string: 'y'})
@@ -132,10 +146,20 @@ def _xy_dims_to_standard_cf(xds):
     return xds
 
 
-def _reorganise_to_standard_cf(xds):
+def _time_dim_to_standard_cf(xds, errors='raise'):
+    """ Rename the TIME dimension to time """
+    try:
+        xds = xds.rename({'TIME': 'time'})
+    except ValueError:
+        if errors == 'raise':
+            raise ValueError('Dimension `TIME` not found in this dataset')
+    return xds
+
+
+def _reorganise_to_standard_cf(xds, errors='raise'):
     """ Reorganise dimensions, attributes into standard netCDF names. """
-    xds = _xy_dims_to_standard_cf(xds)
-    xds = xds.rename({'TIME': 'time'})
+    xds = _xy_dims_to_standard_cf(xds, errors=errors)
+    xds = _time_dim_to_standard_cf(xds, errors=errors)
 
     return xds
 
