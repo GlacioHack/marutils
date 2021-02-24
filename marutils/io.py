@@ -11,7 +11,7 @@ import rioxarray
 from marutils.georef import MAR_PROJECTION, MAR_BASE_PROJ4, create_crs
 
 def _open_dataset(filename, projection=None, base_proj4=None, chunks=None, 
-    errors=errors, **kwargs):
+    errors='raise', **kwargs):
     """
     Load MAR NetCDF, setting X and Y coordinate names to X_name and Y_name,
     and multiplying by 1000 to convert coordinates to metres.
@@ -102,6 +102,9 @@ def open_dataset(filenames, concat_dim='time', transform_func=None, chunks={'tim
         return ds
 
     paths = sorted(glob(filenames))
+    if len(paths) == 0:
+        raise FileNotFoundError('File(s) not found! : %s' %filenames)
+        
     load_geo = [False] * len(paths)
     load_geo[0] = True
     datasets = [process_one_path(p, load_geo) for p in paths]
