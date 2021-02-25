@@ -35,13 +35,17 @@ print(mar_outputs.rio.crs.to_proj4())
 
 ## Installation
 
-At the moment, manually:
+From PyPI:
+
+  pip install marutils
+
+Manually:
 
 	git clone <repository>
 	cd <repository>
-	pip install -e .
+	pip install .
 
-Soon to be available via pyPI.
+(Add `-e` flag to install in editable/development mode.)
 
 
 ## Working with X-hourly outputs
