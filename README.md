@@ -37,7 +37,7 @@ print(mar_outputs.rio.crs.to_proj4())
 
 From PyPI:
 
-  pip install marutils
+	pip install marutils
 
 Manually:
 
