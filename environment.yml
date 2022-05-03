@@ -1,0 +1,21 @@
+name: marutils
+channels:
+  - conda-forge
+dependencies:
+  - python=3
+  - pyproj
+  - rasterio
+  - rioxarray
+  - pandas
+  - netcdf4
+  - dask
+  - xarray
+
+  # code checks
+  - flake8
+
+  # testing
+  - pytest
+
+  # development
+  - pip
