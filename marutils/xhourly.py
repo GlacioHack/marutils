@@ -64,7 +64,7 @@ def xhourly_to_time(xda):
 
     index = pd.date_range(start=dt_start, end=dt_end, freq='%sH' % freq)
 
-    hourly_da = xda.stack(TIME_H=(HDIM, 'time'))
+    hourly_da = xda.stack(TIME_H=('time', HDIM))
     hourly_da['TIME_H'] = index
     hourly_da = hourly_da.rename({'TIME_H': 'time'})
 
